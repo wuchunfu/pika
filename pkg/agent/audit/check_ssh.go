@@ -69,14 +69,14 @@ func (sc *SSHChecker) Check() protocol.SecurityCheck {
 	sshConfig := sc.readSSHConfig()
 
 	// 检查是否允许 root 登录（仅记录，不告警）
-	permitRoot := sshConfig["permitrootlogin"]
-	if permitRoot != "" {
-		check.Details = append(check.Details, protocol.SecurityCheckSub{
-			Name:    "permit_root_login",
-			Status:  StatusPass,
-			Message: fmt.Sprintf("Root登录策略: %s", permitRoot),
-		})
-	}
+	//permitRoot := sshConfig["permitrootlogin"]
+	//if permitRoot != "" {
+	//	check.Details = append(check.Details, protocol.SecurityCheckSub{
+	//		Name:    "permit_root_login",
+	//		Status:  StatusPass,
+	//		Message: fmt.Sprintf("Root登录策略: %s", permitRoot),
+	//	})
+	//}
 
 	// 检查空密码登录
 	permitEmpty := sshConfig["permitemptypasswords"]

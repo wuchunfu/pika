@@ -8,6 +8,7 @@
 2. **实时监控**: 使用 `fsnotify` 库监控受保护目录的文件系统事件
 3. **事件上报**: 将检测到的文件变动事件实时上报到服务端
 4. **动态管理**: 支持动态增加、移除保护目录,自动计算差异并应用
+5. **属性巡检**: 定期检查目录的不可变属性,检测并自动恢复被篡改的属性
 
 ## 系统要求
 
@@ -84,11 +85,41 @@ Agent 计算差异
   • 对移除的目录: chattr -i + watcher.Remove()
   • 对新增的目录: chattr +i + watcher.Add()
         ↓
+启动属性巡检 (首次有保护目录时)
+  • 每 60 秒巡检一次
+  • 检查所有目录的不可变属性
+  • 发现属性被篡改时自动恢复并告警
+        ↓
 返回结果
   • 成功/失败状态
   • 新增的目录列表
   • 移除的目录列表
   • 当前所有保护的目录
+```
+
+### 属性巡检机制
+
+为了防止其他用户或进程移除目录的不可变属性,系统会定期巡检所有受保护目录:
+
+**巡检流程**:
+1. 每 60 秒检查一次所有受保护目录
+2. 使用 `lsattr -d` 命令检查不可变属性
+3. 如果发现属性被移除:
+   - 自动执行 `chattr +i` 恢复属性
+   - 生成告警并上报服务端
+   - 告警中包含是否成功恢复的状态
+
+**告警示例**:
+```json
+{
+  "type": "tamper_alert",
+  "data": {
+    "path": "/etc/nginx",
+    "timestamp": 1700000000000,
+    "details": "不可变属性被移除",
+    "restored": true
+  }
+}
 ```
 
 ## 核心 API
@@ -143,8 +174,9 @@ func (p *Protector) IsProtected(path string) bool
 ### 消息类型
 
 ```go
-MessageTypeTamperProtect MessageType = "tamper_protect"
-MessageTypeTamperEvent   MessageType = "tamper_event"
+MessageTypeTamperProtect MessageType = "tamper_protect" // 配置防篡改保护
+MessageTypeTamperEvent   MessageType = "tamper_event"   // 文件变动事件
+MessageTypeTamperAlert   MessageType = "tamper_alert"   // 属性篡改告警
 ```
 
 ### 数据结构
@@ -175,6 +207,16 @@ type TamperEventData struct {
     Operation string // 操作类型: write, remove, rename, chmod, create
     Timestamp int64  // 事件时间(毫秒)
     Details   string // 详细信息
+}
+```
+
+#### 属性篡改告警数据
+```go
+type TamperAlertData struct {
+    Path      string // 被篡改的路径
+    Timestamp int64  // 检测时间(毫秒)
+    Details   string // 详细信息(如: "不可变属性被移除")
+    Restored  bool   // 是否已自动恢复
 }
 ```
 
@@ -294,20 +336,46 @@ sendMessage(protocol.MessageTypeTamperProtect, config)
 // }
 ```
 
-### 服务端: 接收事件通知
+### 服务端: 接收文件变动事件
 
 ```go
-// 监听事件消息
+// 监听文件变动事件
 case protocol.MessageTypeTamperEvent:
     var event protocol.TamperEventData
     json.Unmarshal(msg.Data, &event)
 
     // 处理防篡改事件
-    log.Printf("检测到篡改: %s - %s at %d",
+    log.Printf("检测到文件篡改: %s - %s at %d",
         event.Path, event.Operation, event.Timestamp)
 
     // 可以进行告警、记录日志等操作
     sendAlert(event)
+```
+
+### 服务端: 接收属性篡改告警
+
+```go
+// 监听属性篡改告警
+case protocol.MessageTypeTamperAlert:
+    var alert protocol.TamperAlertData
+    json.Unmarshal(msg.Data, &alert)
+
+    // 处理属性篡改告警
+    status := "未恢复"
+    if alert.Restored {
+        status = "已自动恢复"
+    }
+
+    log.Printf("⚠️ 检测到属性篡改: %s - %s (%s)",
+        alert.Path, alert.Details, status)
+
+    // 发送高优先级告警
+    sendCriticalAlert(alert)
+
+    // 如果未能自动恢复,触发人工介入流程
+    if !alert.Restored {
+        notifyAdministrator(alert)
+    }
 ```
 
 ## 测试

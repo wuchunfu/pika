@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os/exec"
+	"os"
 	"runtime"
 	"sync"
 	"time"
@@ -45,7 +45,6 @@ type Protector struct {
 	eventCh     chan TamperEvent
 	alertCh     chan AttributeTamperAlert // 属性篡改告警通道
 	watcherOnce sync.Once                 // 确保 watcher 只创建一次
-	patrolOnce  sync.Once                 // 确保巡检只启动一次
 }
 
 // NewProtector 创建防篡改保护器
@@ -53,6 +52,7 @@ func NewProtector() *Protector {
 	return &Protector{
 		paths:   make(map[string]bool),
 		eventCh: make(chan TamperEvent, 100),
+		alertCh: make(chan AttributeTamperAlert, 50),
 	}
 }
 
@@ -197,6 +197,11 @@ func (p *Protector) GetEvents() <-chan TamperEvent {
 	return p.eventCh
 }
 
+// GetAlerts 获取属性篡改告警通道
+func (p *Protector) GetAlerts() <-chan AttributeTamperAlert {
+	return p.alertCh
+}
+
 // GetProtectedPaths 获取受保护的路径列表
 func (p *Protector) GetProtectedPaths() []string {
 	p.mu.RLock()
@@ -305,6 +310,13 @@ func (p *Protector) handleEvent(event fsnotify.Event) {
 	var details string
 
 	switch {
+	case event.Op&fsnotify.Chmod == fsnotify.Chmod:
+		// Chmod 事件可能是属性变化,需要检查是否是不可变属性被篡改
+		if p.IsProtected(event.Name) {
+			p.handleChmodEvent(event.Name)
+		}
+		operation = "chmod"
+		details = "文件权限或属性被修改"
 	case event.Op&fsnotify.Write == fsnotify.Write:
 		operation = "write"
 		details = "文件被写入"
@@ -314,9 +326,6 @@ func (p *Protector) handleEvent(event fsnotify.Event) {
 	case event.Op&fsnotify.Rename == fsnotify.Rename:
 		operation = "rename"
 		details = "文件被重命名"
-	case event.Op&fsnotify.Chmod == fsnotify.Chmod:
-		operation = "chmod"
-		details = "文件权限被修改"
 	case event.Op&fsnotify.Create == fsnotify.Create:
 		operation = "create"
 		details = "文件被创建"
@@ -341,21 +350,72 @@ func (p *Protector) handleEvent(event fsnotify.Event) {
 	}
 }
 
+// handleChmodEvent 处理 Chmod 事件,检查是否是不可变属性被篡改
+func (p *Protector) handleChmodEvent(path string) {
+	// 检查不可变属性
+	hasImmutable, err := p.checkImmutable(path)
+	if err != nil {
+		log.Printf("⚠️  检查目录 %s 属性失败: %v", path, err)
+		return
+	}
+
+	// 如果不可变属性被移除
+	if !hasImmutable {
+		log.Printf("🚨 检测到属性篡改: %s 的不可变属性被移除", path)
+
+		// 尝试恢复属性
+		restored := false
+		if err := p.setImmutable(path, true); err != nil {
+			log.Printf("❌ 恢复目录 %s 不可变属性失败: %v", path, err)
+		} else {
+			log.Printf("✅ 已自动恢复目录 %s 的不可变属性", path)
+			restored = true
+		}
+
+		// 发送告警
+		alert := AttributeTamperAlert{
+			Path:      path,
+			Timestamp: time.Now(),
+			Details:   "不可变属性被移除",
+			Restored:  restored,
+		}
+
+		select {
+		case p.alertCh <- alert:
+			log.Printf("📤 已发送属性篡改告警: %s", path)
+		default:
+			log.Printf("⚠️  告警队列已满,丢弃告警: %s", path)
+		}
+	}
+}
+
+// checkImmutable 使用 ioctl 检查目录是否具有不可变属性
+func (p *Protector) checkImmutable(path string) (bool, error) {
+	// 打开文件/目录
+	f, err := os.Open(path)
+	if err != nil {
+		return false, fmt.Errorf("打开文件失败: %w", err)
+	}
+	defer f.Close()
+
+	// 使用 chattr.go 中的 IsAttr 函数检查不可变属性
+	return IsAttr(f, FS_IMMUTABLE_FL)
+}
+
 // setImmutable 设置或移除文件/目录的不可变属性
 func (p *Protector) setImmutable(path string, immutable bool) error {
-	var cmd *exec.Cmd
-	if immutable {
-		cmd = exec.Command("chattr", "+i", path)
-	} else {
-		cmd = exec.Command("chattr", "-i", path)
-	}
-
-	output, err := cmd.CombinedOutput()
+	// 打开文件/目录
+	f, err := os.Open(path)
 	if err != nil {
-		return fmt.Errorf("执行 chattr 失败: %w, 输出: %s", err, string(output))
+		return fmt.Errorf("打开文件失败: %w", err)
 	}
+	defer f.Close()
 
-	return nil
+	// 使用 chattr.go 中的 SetAttr/UnsetAttr 函数
+	if immutable {
+		return SetAttr(f, FS_IMMUTABLE_FL)
+	}
+	return UnsetAttr(f, FS_IMMUTABLE_FL)
 }
 
 // filterFailed 过滤掉失败的项,返回成功的项

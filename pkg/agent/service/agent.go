@@ -200,6 +200,11 @@ func (a *Agent) runOnce(ctx context.Context) error {
 		a.tamperEventLoop(ctx, conn, done)
 	}()
 
+	// 启动防篡改属性告警监控
+	go func() {
+		a.tamperAlertLoop(ctx, conn, done)
+	}()
+
 	// 等待错误或上下文取消
 	select {
 	case err := <-errChan:
@@ -703,6 +708,49 @@ func (a *Agent) tamperEventLoop(ctx context.Context, conn *safeConn, done chan s
 				log.Printf("⚠️  发送防篡改事件失败: %v", err)
 			} else {
 				log.Printf("📤 已上报防篡改事件: %s - %s", event.Path, event.Operation)
+			}
+		}
+	}
+}
+
+// tamperAlertLoop 防篡改属性告警监控循环
+func (a *Agent) tamperAlertLoop(ctx context.Context, conn *safeConn, done chan struct{}) {
+	alertCh := a.tamperProtector.GetAlerts()
+
+	for {
+		select {
+		case <-done:
+			return
+		case <-ctx.Done():
+			return
+		case alert := <-alertCh:
+			// 发送属性篡改告警到服务端
+			alertData := protocol.TamperAlertData{
+				Path:      alert.Path,
+				Timestamp: alert.Timestamp.UnixMilli(),
+				Details:   alert.Details,
+				Restored:  alert.Restored,
+			}
+
+			data, err := json.Marshal(alertData)
+			if err != nil {
+				log.Printf("⚠️  序列化属性篡改告警失败: %v", err)
+				continue
+			}
+
+			msg := protocol.Message{
+				Type: protocol.MessageTypeTamperAlert,
+				Data: data,
+			}
+
+			if err := conn.WriteJSON(msg); err != nil {
+				log.Printf("⚠️  发送属性篡改告警失败: %v", err)
+			} else {
+				status := "未恢复"
+				if alert.Restored {
+					status = "已恢复"
+				}
+				log.Printf("📤 已上报属性篡改告警: %s - %s", alert.Path, status)
 			}
 		}
 	}

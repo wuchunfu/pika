@@ -53,6 +53,7 @@ const (
 	// 防篡改消息
 	MessageTypeTamperProtect MessageType = "tamper_protect"
 	MessageTypeTamperEvent   MessageType = "tamper_event"
+	MessageTypeTamperAlert   MessageType = "tamper_alert"
 )
 
 type MetricType string
@@ -287,4 +288,12 @@ type TamperEventData struct {
 	Operation string `json:"operation"` // 操作类型: write, remove, rename, chmod, create
 	Timestamp int64  `json:"timestamp"` // 事件时间(毫秒)
 	Details   string `json:"details"`   // 详细信息
+}
+
+// TamperAlertData 防篡改属性告警数据
+type TamperAlertData struct {
+	Path      string `json:"path"`      // 被篡改的路径
+	Timestamp int64  `json:"timestamp"` // 检测时间(毫秒)
+	Details   string `json:"details"`   // 详细信息(如: "不可变属性被移除")
+	Restored  bool   `json:"restored"`  // 是否已自动恢复
 }

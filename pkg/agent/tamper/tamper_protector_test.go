@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"runtime"
 	"testing"
 	"time"
@@ -353,5 +354,162 @@ func TestUpdateResultJSON(t *testing.T) {
 	}
 	if len(decoded.Current) != len(result.Current) {
 		t.Errorf("Current length = %d, want %d", len(decoded.Current), len(result.Current))
+	}
+}
+
+func TestAttributeTamperAlertJSON(t *testing.T) {
+	alert := AttributeTamperAlert{
+		Path:      "/tmp/test",
+		Timestamp: time.Now(),
+		Details:   "不可变属性被移除",
+		Restored:  true,
+	}
+
+	// 测试 JSON 序列化
+	data, err := json.Marshal(alert)
+	if err != nil {
+		t.Fatalf("JSON 序列化失败: %v", err)
+	}
+
+	// 测试 JSON 反序列化
+	var decoded AttributeTamperAlert
+	err = json.Unmarshal(data, &decoded)
+	if err != nil {
+		t.Fatalf("JSON 反序列化失败: %v", err)
+	}
+
+	// 验证字段
+	if decoded.Path != alert.Path {
+		t.Errorf("Path = %s, want %s", decoded.Path, alert.Path)
+	}
+	if decoded.Details != alert.Details {
+		t.Errorf("Details = %s, want %s", decoded.Details, alert.Details)
+	}
+	if decoded.Restored != alert.Restored {
+		t.Errorf("Restored = %v, want %v", decoded.Restored, alert.Restored)
+	}
+}
+
+func TestCheckImmutable(t *testing.T) {
+	// 此测试仅在 Linux 系统上运行
+	if runtime.GOOS != "linux" {
+		t.Skip("防篡改功能仅支持 Linux 系统")
+	}
+
+	// 检查是否有 root 权限
+	if os.Geteuid() != 0 {
+		t.Skip("此测试需要 root 权限才能运行")
+	}
+
+	p := NewProtector()
+
+	// 创建测试目录
+	testDir := "/tmp/tamper_test_check_" + time.Now().Format("20060102150405")
+	if err := os.MkdirAll(testDir, 0755); err != nil {
+		t.Fatalf("创建测试目录失败: %v", err)
+	}
+	defer os.RemoveAll(testDir)
+
+	// 设置不可变属性
+	if err := p.setImmutable(testDir, true); err != nil {
+		t.Fatalf("设置不可变属性失败: %v", err)
+	}
+	defer p.setImmutable(testDir, false)
+
+	// 检查属性
+	hasImmutable, err := p.checkImmutable(testDir)
+	if err != nil {
+		t.Fatalf("检查不可变属性失败: %v", err)
+	}
+	if !hasImmutable {
+		t.Error("目录应该具有不可变属性")
+	}
+
+	// 移除属性
+	if err := p.setImmutable(testDir, false); err != nil {
+		t.Fatalf("移除不可变属性失败: %v", err)
+	}
+
+	// 再次检查
+	hasImmutable, err = p.checkImmutable(testDir)
+	if err != nil {
+		t.Fatalf("检查不可变属性失败: %v", err)
+	}
+	if hasImmutable {
+		t.Error("目录不应该具有不可变属性")
+	}
+}
+
+func TestChmodEventDetectsAttributeTamper(t *testing.T) {
+	// 此测试仅在 Linux 系统上运行
+	if runtime.GOOS != "linux" {
+		t.Skip("防篡改功能仅支持 Linux 系统")
+	}
+
+	// 检查是否有 root 权限
+	if os.Geteuid() != 0 {
+		t.Skip("此测试需要 root 权限才能运行")
+	}
+
+	p := NewProtector()
+
+	// 创建测试目录
+	testDir := "/tmp/tamper_test_chmod_" + time.Now().Format("20060102150405")
+	if err := os.MkdirAll(testDir, 0755); err != nil {
+		t.Fatalf("创建测试目录失败: %v", err)
+	}
+	defer os.RemoveAll(testDir)
+
+	ctx := context.Background()
+
+	// 添加保护
+	_, err := p.UpdatePaths(ctx, []string{testDir})
+	if err != nil {
+		t.Fatalf("UpdatePaths() 失败: %v", err)
+	}
+	defer p.StopAll()
+
+	// 获取告警通道
+	alertCh := p.GetAlerts()
+
+	// 等待一段时间让监控器准备就绪
+	time.Sleep(1 * time.Second)
+
+	// 模拟外部篡改: 使用 chattr 命令移除不可变属性
+	// 这会触发 fsnotify.Chmod 事件
+	t.Log("模拟外部篡改: 使用 chattr -i 移除不可变属性")
+	cmd := exec.Command("chattr", "-i", testDir)
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("移除不可变属性失败: %v", err)
+	}
+
+	// 等待告警 (fsnotify.Chmod 事件应该会触发检查)
+	select {
+	case alert := <-alertCh:
+		t.Logf("收到属性篡改告警: Path=%s, Details=%s, Restored=%v",
+			alert.Path, alert.Details, alert.Restored)
+
+		// 验证告警字段
+		if alert.Path != testDir {
+			t.Errorf("告警路径 = %s, want %s", alert.Path, testDir)
+		}
+		if alert.Details != "不可变属性被移除" {
+			t.Errorf("告警详情 = %s, want '不可变属性被移除'", alert.Details)
+		}
+		if !alert.Restored {
+			t.Error("属性应该被自动恢复")
+		}
+
+		// 验证属性确实被恢复
+		hasImmutable, err := p.checkImmutable(testDir)
+		if err != nil {
+			t.Fatalf("检查不可变属性失败: %v", err)
+		}
+		if !hasImmutable {
+			t.Error("不可变属性应该被自动恢复")
+		}
+
+	case <-time.After(5 * time.Second):
+		t.Fatal("超时未收到属性篡改告警")
 	}
 }

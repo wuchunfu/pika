@@ -35,3 +35,9 @@ func (r *MonitorStatsRepo) FindByMonitorIdIn(ctx context.Context, monitorIds []s
 		Find(&statsList).Error
 	return statsList, err
 }
+
+func (r *MonitorStatsRepo) DeleteByMonitorId(ctx context.Context, monitorId string) error {
+	return r.db.WithContext(ctx).
+		Where("monitor_id = ?", monitorId).
+		Delete(&models.MonitorStats{}).Error
+}

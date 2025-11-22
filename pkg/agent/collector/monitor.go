@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	probing "github.com/prometheus-community/pro-bing"
+
 	"github.com/dushixiang/pika/internal/protocol"
 )
 
@@ -58,6 +60,8 @@ func (c *MonitorCollector) Collect(items []protocol.MonitorItem) []protocol.Moni
 			result = c.checkHTTP(item)
 		case "tcp":
 			result = c.checkTCP(item)
+		case "icmp", "ping":
+			result = c.checkICMP(item)
 		default:
 			result = protocol.MonitorData{
 				ID:        item.ID,
@@ -229,5 +233,70 @@ func (c *MonitorCollector) checkTCP(item protocol.MonitorItem) protocol.MonitorD
 	// 连接成功
 	result.Status = "up"
 	result.Message = fmt.Sprintf("TCP connected - %dms", responseTime)
+	return result
+}
+
+// checkICMP 检查 ICMP (Ping)
+func (c *MonitorCollector) checkICMP(item protocol.MonitorItem) protocol.MonitorData {
+	result := protocol.MonitorData{
+		ID:        item.ID,
+		Type:      item.Type,
+		Target:    item.Target,
+		CheckedAt: time.Now().UnixMilli(),
+	}
+
+	// 获取配置，使用默认值
+	icmpCfg := item.ICMPConfig
+	timeout := 5 // 默认 5 秒
+	count := 4   // 默认 Ping 4 次
+	if icmpCfg != nil {
+		if icmpCfg.Timeout > 0 {
+			timeout = icmpCfg.Timeout
+		}
+		if icmpCfg.Count > 0 {
+			count = icmpCfg.Count
+		}
+	}
+
+	// 创建 Pinger
+	pinger, err := probing.NewPinger(item.Target)
+	if err != nil {
+		result.Status = "down"
+		result.Error = fmt.Sprintf("create pinger failed: %v", err)
+		return result
+	}
+
+	// 配置 Pinger
+	pinger.Count = count
+	pinger.Timeout = time.Duration(timeout) * time.Second
+	pinger.Interval = 100 * time.Millisecond
+
+	// 尝试以非特权模式运行（使用 UDP）
+	pinger.SetPrivileged(false)
+
+	// 执行 Ping
+	err = pinger.Run()
+	if err != nil {
+		result.Status = "down"
+		result.Error = fmt.Sprintf("ping failed: %v", err)
+		return result
+	}
+
+	// 获取统计信息
+	stats := pinger.Statistics()
+
+	// 检查是否有成功的包
+	if stats.PacketsRecv > 0 {
+		result.Status = "up"
+		result.ResponseTime = stats.AvgRtt.Milliseconds()
+		packetLoss := int(stats.PacketLoss)
+		result.Message = fmt.Sprintf("ICMP Echo Reply - %d/%d packets, %dms avg, %d%% loss",
+			stats.PacketsRecv, stats.PacketsSent, stats.AvgRtt.Milliseconds(), packetLoss)
+	} else {
+		result.Status = "down"
+		result.Error = fmt.Sprintf("all %d ping attempts failed (timeout: %ds)", count, timeout)
+		result.Message = "100% packet loss"
+	}
+
 	return result
 }

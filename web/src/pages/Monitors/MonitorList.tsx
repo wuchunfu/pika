@@ -1,21 +1,9 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import type {ActionType, ProColumns} from '@ant-design/pro-components';
 import {ProTable} from '@ant-design/pro-components';
-import {
-    App,
-    Button,
-    Divider,
-    Form,
-    Input,
-    InputNumber,
-    Modal,
-    Select,
-    Space,
-    Switch,
-    Tag,
-} from 'antd';
+import {App, Button, Divider, Form, Input, InputNumber, Modal, Select, Space, Switch, Tag,} from 'antd';
 import {PageHeader} from '../../components';
-import {Plus, RefreshCw, Edit, Trash2, PlusCircle, MinusCircle} from 'lucide-react';
+import {Edit, MinusCircle, Plus, PlusCircle, RefreshCw, Trash2} from 'lucide-react';
 import dayjs from 'dayjs';
 import {getAgentPaging} from '../../api/agent';
 import type {Agent, MonitorTask, MonitorTaskRequest} from '../../types';
@@ -80,6 +68,8 @@ const MonitorList = () => {
             httpHeaders: [],
             httpBody: '',
             tcpTimeout: 5,
+            icmpTimeout: 5,
+            icmpCount: 4,
         });
     };
 
@@ -108,6 +98,8 @@ const MonitorList = () => {
             httpHeaders: headers.length > 0 ? headers : [{key: '', value: ''}],
             httpBody: monitor.httpConfig?.body,
             tcpTimeout: monitor.tcpConfig?.timeout || 5,
+            icmpTimeout: monitor.icmpConfig?.timeout || 5,
+            icmpCount: monitor.icmpConfig?.count || 4,
         });
     };
 
@@ -148,6 +140,11 @@ const MonitorList = () => {
             if (values.type === 'tcp') {
                 payload.tcpConfig = {
                     timeout: values.tcpTimeout || 5,
+                };
+            } else if (values.type === 'icmp' || values.type === 'ping') {
+                payload.icmpConfig = {
+                    timeout: values.icmpTimeout || 5,
+                    count: values.icmpCount || 4,
                 };
             } else {
                 const headers: Record<string, string> = {};
@@ -209,11 +206,17 @@ const MonitorList = () => {
             title: '类型',
             dataIndex: 'type',
             width: 80,
-            render: (type) => (
-                <Tag color={type === 'tcp' ? 'blue' : 'green'} className="uppercase">
-                    {type}
-                </Tag>
-            ),
+            render: (type) => {
+                let color = 'green';
+                if (type === 'tcp') color = 'blue';
+                else if (type === 'icmp' || type === 'ping') color = 'purple';
+
+                return (
+                    <Tag color={color} className="uppercase">
+                        {type === 'ping' ? 'icmp' : type}
+                    </Tag>
+                );
+            },
         },
         {
             title: '目标',
@@ -282,7 +285,7 @@ const MonitorList = () => {
         <div className="space-y-6">
             <PageHeader
                 title="服务监控"
-                description="配置 HTTP/TCP 服务可用性检测，集中管理监控策略与探针覆盖范围"
+                description="配置 HTTP/TCP/ICMP 服务可用性检测，集中管理监控策略与探针覆盖范围"
                 actions={[
                     {
                         key: 'refresh',
@@ -380,6 +383,7 @@ const MonitorList = () => {
                             options={[
                                 {label: 'HTTP / HTTPS', value: 'http'},
                                 {label: 'TCP', value: 'tcp'},
+                                {label: 'ICMP (Ping)', value: 'icmp'},
                             ]}
                         />
                     </Form.Item>
@@ -389,7 +393,13 @@ const MonitorList = () => {
                         name="target"
                         rules={[{required: true, message: '请输入目标地址'}]}
                     >
-                        <Input placeholder="HTTP示例：https://example.com/health，TCP示例：example.com:3306"/>
+                        <Input placeholder={
+                            watchType === 'icmp'
+                                ? "ICMP示例：8.8.8.8 或 google.com"
+                                : watchType === 'tcp'
+                                    ? "TCP示例：example.com:3306"
+                                    : "HTTP示例：https://example.com/health"
+                        }/>
                     </Form.Item>
 
                     <Form.Item label="探针范围" name="agentIds" extra="不选择表示所有探针节点都会执行此监控">
@@ -429,6 +439,16 @@ const MonitorList = () => {
                         <Form.Item label="连接超时 (秒)" name="tcpTimeout" initialValue={5}>
                             <InputNumber min={1} max={120} style={{width: '100%'}}/>
                         </Form.Item>
+                    ) : watchType === 'icmp' ? (
+                        <>
+                            <Form.Item label="Ping 超时 (秒)" name="icmpTimeout" initialValue={5}>
+                                <InputNumber min={1} max={60} style={{width: '100%'}}/>
+                            </Form.Item>
+
+                            <Form.Item label="Ping 次数" name="icmpCount" initialValue={4} extra="单次检测发送的 ICMP 包数量">
+                                <InputNumber min={1} max={10} style={{width: '100%'}}/>
+                            </Form.Item>
+                        </>
                     ) : (
                         <>
                             <Form.Item label="HTTP 方法" name="httpMethod" initialValue="GET">

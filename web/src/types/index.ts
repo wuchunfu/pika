@@ -234,10 +234,15 @@ export interface MonitorTcpConfig {
     timeout?: number;
 }
 
+export interface MonitorIcmpConfig {
+    timeout?: number;
+    count?: number;
+}
+
 export interface MonitorTask {
     id: number;
     name: string;
-    type: 'http' | 'https' | 'tcp';
+    type: 'http' | 'https' | 'tcp' | 'icmp' | 'ping';
     target: string;
     description?: string;
     enabled: boolean;
@@ -245,6 +250,7 @@ export interface MonitorTask {
     interval: number;
     httpConfig?: MonitorHttpConfig | null;
     tcpConfig?: MonitorTcpConfig | null;
+    icmpConfig?: MonitorIcmpConfig | null;
     agentIds?: string[];
     createdAt: number;
     updatedAt: number;
@@ -252,7 +258,7 @@ export interface MonitorTask {
 
 export interface MonitorTaskRequest {
     name: string;
-    type: 'http' | 'https' | 'tcp';
+    type: 'http' | 'https' | 'tcp' | 'icmp' | 'ping';
     target: string;
     description?: string;
     enabled?: boolean;
@@ -260,6 +266,7 @@ export interface MonitorTaskRequest {
     interval: number;
     httpConfig?: MonitorHttpConfig | null;
     tcpConfig?: MonitorTcpConfig | null;
+    icmpConfig?: MonitorIcmpConfig | null;
     agentIds?: string[];
 }
 
@@ -274,7 +281,7 @@ export interface MonitorListResponse {
 export interface PublicMonitor {
     id: string;
     name: string;
-    type: 'http' | 'https' | 'tcp';
+    type: 'http' | 'https' | 'tcp' | 'icmp' | 'ping';
     target: string;
     showTargetPublic: boolean;
     description?: string;

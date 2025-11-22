@@ -663,3 +663,10 @@ func (r *MetricRepo) GetTemperatureMetrics(ctx context.Context, agentID string, 
 
 	return metrics, err
 }
+
+// DeleteMonitorMetrics 删除指定监控任务的所有指标数据
+func (r *MetricRepo) DeleteMonitorMetrics(ctx context.Context, monitorID string) error {
+	return r.db.WithContext(ctx).
+		Where("monitor_id = ?", monitorID).
+		Delete(&models.MonitorMetric{}).Error
+}

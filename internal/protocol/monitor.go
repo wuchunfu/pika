@@ -13,6 +13,7 @@ type MonitorItem struct {
 	Target     string             `json:"target"`
 	HTTPConfig *HTTPMonitorConfig `json:"httpConfig,omitempty"`
 	TCPConfig  *TCPMonitorConfig  `json:"tcpConfig,omitempty"`
+	ICMPConfig *ICMPMonitorConfig `json:"icmpConfig,omitempty"`
 }
 
 // HTTPMonitorConfig HTTP 监控配置
@@ -28,4 +29,10 @@ type HTTPMonitorConfig struct {
 // TCPMonitorConfig TCP 监控配置
 type TCPMonitorConfig struct {
 	Timeout int `json:"timeout"`
+}
+
+// ICMPMonitorConfig ICMP 监控配置
+type ICMPMonitorConfig struct {
+	Timeout int `json:"timeout"` // 超时时间（秒）
+	Count   int `json:"count"`   // Ping 次数
 }

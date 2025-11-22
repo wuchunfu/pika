@@ -110,6 +110,7 @@ func (s *MonitorService) UpdateMonitor(ctx context.Context, id string, req *Moni
 		return nil, err
 	}
 
+	task.Enabled = req.Enabled
 	task.Name = strings.TrimSpace(req.Name)
 	task.Type = req.Type
 	task.Target = strings.TrimSpace(req.Target)
@@ -127,7 +128,7 @@ func (s *MonitorService) UpdateMonitor(ctx context.Context, id string, req *Moni
 	task.HTTPConfig = datatypes.NewJSONType(req.HTTPConfig)
 	task.TCPConfig = datatypes.NewJSONType(req.TCPConfig)
 
-	if err := s.MonitorRepo.UpdateById(ctx, &task); err != nil {
+	if err := s.MonitorRepo.Save(ctx, &task); err != nil {
 		return nil, err
 	}
 
@@ -136,9 +137,23 @@ func (s *MonitorService) UpdateMonitor(ctx context.Context, id string, req *Moni
 
 func (s *MonitorService) DeleteMonitor(ctx context.Context, id string) error {
 	return s.Transaction(ctx, func(ctx context.Context) error {
+		// 删除监控任务
 		if err := s.MonitorRepo.DeleteById(ctx, id); err != nil {
 			return err
 		}
+
+		// 删除监控统计数据
+		if err := s.monitorStatsRepo.DeleteByMonitorId(ctx, id); err != nil {
+			s.logger.Error("删除监控统计数据失败", zap.String("monitorId", id), zap.Error(err))
+			return err
+		}
+
+		// 删除监控指标数据
+		if err := s.metricRepo.DeleteMonitorMetrics(ctx, id); err != nil {
+			s.logger.Error("删除监控指标数据失败", zap.String("monitorId", id), zap.Error(err))
+			return err
+		}
+
 		return nil
 	})
 }

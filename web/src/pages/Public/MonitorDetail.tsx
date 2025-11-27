@@ -62,7 +62,7 @@ const LoadingSpinner = () => (
     <div className="flex min-h-screen items-center justify-center bg-slate-50 dark:bg-slate-950">
         <div className="flex flex-col items-center gap-3">
             <Loader2 className="h-8 w-8 animate-spin text-slate-400 dark:text-slate-400"/>
-            <p className="text-sm text-slate-500 dark:text-slate-400">加载监控数据中...</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">数据加载中，请稍候...</p>
         </div>
     </div>
 );
@@ -74,6 +74,28 @@ const EmptyState = ({message = '监控数据不存在'}: { message?: string }) =
                 <Shield className="h-8 w-8"/>
             </div>
             <p className="text-sm text-slate-500 dark:text-slate-400">{message}</p>
+        </div>
+    </div>
+);
+
+const ChartPlaceholder = ({
+                              icon: Icon = TrendingUp,
+                              title = '暂无数据',
+                              subtitle = '等待采集新数据后展示图表',
+                              heightClass = 'h-80',
+                          }: {
+    icon?: typeof TrendingUp;
+    title?: string;
+    subtitle?: string;
+    heightClass?: string;
+}) => (
+    <div
+        className={`flex ${heightClass} items-center justify-center rounded-lg border border-dashed border-slate-200 dark:border-slate-800 text-sm text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-900`}
+    >
+        <div className="text-center">
+            <Icon className="mx-auto mb-3 h-10 w-10 text-slate-300 dark:text-slate-600"/>
+            <p>{title}</p>
+            {subtitle ? <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">{subtitle}</p> : null}
         </div>
     </div>
 );
@@ -146,29 +168,48 @@ const UptimeBar = ({uptime}: { uptime: number }) => {
     );
 };
 
+const statThemes = {
+    blue: {
+        icon: 'bg-blue-50 dark:bg-sky-900/30 text-blue-600 dark:text-sky-200',
+        accent: 'text-blue-600 dark:text-sky-200',
+    },
+    emerald: {
+        icon: 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-200',
+        accent: 'text-emerald-600 dark:text-emerald-200',
+    },
+    amber: {
+        icon: 'bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-200',
+        accent: 'text-amber-600 dark:text-amber-200',
+    },
+    rose: {
+        icon: 'bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-200',
+        accent: 'text-rose-600 dark:text-rose-200',
+    },
+};
+
 const StatCard = ({icon, label, value, color = 'blue'}: {
-    icon: React.ReactNode;
+    icon: ReactNode;
     label: string;
     value: string | number;
     color?: string;
 }) => {
-    const colorClasses = {
-        blue: 'bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400',
-        green: 'bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400',
-        yellow: 'bg-yellow-50 dark:bg-yellow-950 text-yellow-600 dark:text-yellow-400',
-        red: 'bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400',
-    };
+    const theme = statThemes[color as keyof typeof statThemes] ?? statThemes.blue;
 
     return (
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950/60 p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg dark:hover:shadow-slate-950/70">
-            <div className="flex items-center gap-3">
-                <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${colorClasses[color as keyof typeof colorClasses] || colorClasses.blue}`}>
-                    {icon}
+            <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                    <div className={`flex h-11 w-11 items-center justify-center rounded-xl ${theme.icon}`}>
+                        {icon}
+                    </div>
+                    <div>
+                        <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                            {label}
+                        </div>
+                        <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">当前指标</div>
+                    </div>
                 </div>
-                <div>
-                    <div className="text-sm text-slate-600 dark:text-slate-400">{label}</div>
-                    <div className="mt-1 text-2xl font-bold text-slate-900 dark:text-slate-100">{value}</div>
-                </div>
+                <span className={`text-xl font-bold ${theme.accent}`}>{value}</span>
             </div>
         </div>
     );
@@ -366,8 +407,8 @@ const MonitorDetail = () => {
         <div className="bg-slate-50 dark:bg-slate-900">
             <div className="mx-auto flex max-w-7xl flex-col px-4 pb-10 pt-6 sm:px-6 lg:px-8">
                 {/* Hero Section */}
-                <section className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-900 via-slate-800 to-blue-900 dark:from-slate-950 dark:via-slate-900 dark:to-blue-950 p-6 text-white shadow-xl">
-                    <div className="absolute inset-0 opacity-30 dark:opacity-20 [background-image:radial-gradient(circle_at_top,rgba(255,255,255,0.35),transparent_55%)]"/>
+                <section className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-900 via-slate-800 to-blue-900 p-6 text-white shadow-xl">
+                    <div className="absolute inset-0 opacity-30 [background-image:radial-gradient(circle_at_top,rgba(255,255,255,0.35),transparent_55%)]"/>
                     <div className="relative flex flex-col gap-6">
                         <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
                             <div className="space-y-4">
@@ -403,13 +444,20 @@ const MonitorDetail = () => {
                                 {heroStats.map((stat) => (
                                     <div
                                         key={stat.label}
-                                        className="rounded-2xl bg-white/10 p-4 text-left backdrop-blur"
+                                        className="rounded-2xl bg-white/10 dark:bg-white/10 p-4 text-left backdrop-blur"
                                     >
                                         <p className="text-[11px] uppercase tracking-[0.3em] text-white/70">{stat.label}</p>
-                                        <p className="mt-2 text-base font-semibold">{stat.value}</p>
+                                        <p className="mt-2 text-base font-semibold text-white">{stat.value}</p>
                                     </div>
                                 ))}
                             </div>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-3 text-xs text-white/70">
+                            <span>监控 ID：{firstStat.id || id}</span>
+                            <span className="hidden h-1 w-1 rounded-full bg-white/30 sm:inline-block"/>
+                            <span>探针数量：{monitorStats.length} 个</span>
+                            <span className="hidden h-1 w-1 rounded-full bg-white/30 sm:inline-block"/>
+                            <span>目标：{firstStat.target}</span>
                         </div>
                     </div>
                 </section>
@@ -434,13 +482,13 @@ const MonitorDetail = () => {
                                 icon={<CheckCircle2 className="h-6 w-6"/>}
                                 label="24h 在线率"
                                 value={`${formatPercentValue(avgUptime24h)}%`}
-                                color={avgUptime24h >= 99 ? 'green' : avgUptime24h >= 95 ? 'yellow' : 'red'}
+                                color={avgUptime24h >= 99 ? 'emerald' : avgUptime24h >= 95 ? 'amber' : 'rose'}
                             />
                             <StatCard
                                 icon={<CheckCircle2 className="h-6 w-6"/>}
                                 label="30d 在线率"
                                 value={`${formatPercentValue(avgUptime30d)}%`}
-                                color={avgUptime30d >= 99 ? 'green' : avgUptime30d >= 95 ? 'yellow' : 'red'}
+                                color={avgUptime30d >= 99 ? 'emerald' : avgUptime30d >= 95 ? 'amber' : 'rose'}
                             />
                         </div>
 
@@ -549,13 +597,10 @@ const MonitorDetail = () => {
                                 </AreaChart>
                             </ResponsiveContainer>
                         ) : (
-                            <div className="flex h-80 items-center justify-center rounded-lg border border-dashed border-slate-200 dark:border-slate-800 text-sm text-slate-500 dark:text-slate-300">
-                                <div className="text-center">
-                                    <TrendingUp className="mx-auto h-12 w-12 text-slate-300 dark:text-slate-600 mb-3"/>
-                                    <p>正在收集数据，请稍候...</p>
-                                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">图表将在数据采集后显示</p>
-                                </div>
-                            </div>
+                            <ChartPlaceholder
+                                subtitle="正在收集数据，请稍后查看历史趋势"
+                                heightClass="h-80"
+                            />
                         )}
                     </Card>
 

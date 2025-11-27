@@ -10,6 +10,7 @@ import {
     Network,
     Server,
     Thermometer,
+    TrendingUp,
     Zap
 } from 'lucide-react';
 import type {TooltipProps} from 'recharts';
@@ -121,6 +122,28 @@ const EmptyState = ({message = '服务器不存在或已离线'}: { message?: st
                 <Server className="h-8 w-8"/>
             </div>
             <p className="text-sm text-slate-500 dark:text-slate-400">{message}</p>
+        </div>
+    </div>
+);
+
+const ChartPlaceholder = ({
+                              icon: Icon = TrendingUp,
+                              title = '暂无数据',
+                              subtitle = '等待采集新数据后展示图表',
+                              heightClass = 'h-52',
+                          }: {
+    icon?: typeof TrendingUp;
+    title?: string;
+    subtitle?: string;
+    heightClass?: string;
+}) => (
+    <div
+        className={`flex ${heightClass} items-center justify-center rounded-lg border border-dashed border-slate-200 dark:border-slate-800 text-sm text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-900`}
+    >
+        <div className="text-center">
+            <Icon className="mx-auto mb-3 h-10 w-10 text-slate-300 dark:text-slate-600"/>
+            <p>{title}</p>
+            {subtitle ? <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">{subtitle}</p> : null}
         </div>
     </div>
 );
@@ -934,10 +957,7 @@ const ServerDetail = () => {
                                         </AreaChart>
                                     </ResponsiveContainer>
                                 ) : (
-                                    <div
-                                        className="flex h-52 items-center justify-center rounded-lg border border-dashed border-slate-200 dark:border-slate-800 text-sm text-slate-500 dark:text-slate-400">
-                                        暂无数据
-                                    </div>
+                                    <ChartPlaceholder/>
                                 )}
                             </section>
 
@@ -985,10 +1005,7 @@ const ServerDetail = () => {
                                         </AreaChart>
                                     </ResponsiveContainer>
                                 ) : (
-                                    <div
-                                        className="flex h-52 items-center justify-center rounded-lg border border-dashed border-slate-200 dark:border-slate-800 text-sm text-slate-500 dark:text-slate-400">
-                                        暂无数据
-                                    </div>
+                                    <ChartPlaceholder/>
                                 )}
                             </section>
 
@@ -1067,10 +1084,7 @@ const ServerDetail = () => {
                                         </LineChart>
                                     </ResponsiveContainer>
                                 ) : (
-                                    <div
-                                        className="flex h-52 items-center justify-center rounded-lg border border-dashed border-slate-200 dark:border-slate-800 text-sm text-slate-500 dark:text-slate-400">
-                                        暂无数据
-                                    </div>
+                                    <ChartPlaceholder subtitle="稍后再次尝试刷新网络流量"/>
                                 )}
                             </section>
 
@@ -1121,10 +1135,7 @@ const ServerDetail = () => {
                                         </LineChart>
                                     </ResponsiveContainer>
                                 ) : (
-                                    <div
-                                        className="flex h-52 items-center justify-center rounded-lg border border-dashed border-slate-200 dark:border-slate-800 text-sm text-slate-500 dark:text-slate-400">
-                                        暂无数据
-                                    </div>
+                                    <ChartPlaceholder subtitle="暂无磁盘 I/O 采集数据"/>
                                 )}
                             </section>
 

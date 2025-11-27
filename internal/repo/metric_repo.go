@@ -6,6 +6,7 @@ import (
 
 	"github.com/dushixiang/pika/internal/models"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type MetricRepo struct {
@@ -98,17 +99,14 @@ func (r *MetricRepo) GetLatestTemperatureMetrics(ctx context.Context, agentID st
 	return metrics, err
 }
 
-// SaveHostMetric 保存主机信息指标（只保留最新的一条记录）
+// SaveHostMetric 保存主机信息指标（按 agent 覆盖，避免先删后插的空窗）
 func (r *MetricRepo) SaveHostMetric(ctx context.Context, metric *models.HostMetric) error {
-	// 使用事务确保原子性
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		// 先删除该 agent 的所有旧记录
-		if err := tx.Where("agent_id = ?", metric.AgentID).Delete(&models.HostMetric{}).Error; err != nil {
-			return err
-		}
-		// 插入新记录
-		return tx.Create(metric).Error
-	})
+	return r.db.WithContext(ctx).
+		Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "agent_id"}},
+			DoUpdates: clause.AssignmentColumns([]string{"os", "platform", "platform_version", "kernel_version", "kernel_arch", "uptime", "boot_time", "procs", "timestamp"}),
+		}).
+		Create(metric).Error
 }
 
 // GetLatestHostMetric 获取最新的主机信息
@@ -467,31 +465,20 @@ func (r *MetricRepo) GetMonitorMetrics(ctx context.Context, agentID, monitorID s
 
 // GetLatestMonitorMetrics 获取最新的监控指标（每个监控项的最新一条）
 func (r *MetricRepo) GetLatestMonitorMetrics(ctx context.Context, agentID string) ([]models.MonitorMetric, error) {
-	// 先获取该 agent 下所有监控项ID
-	var monitorIDs []string
-	err := r.db.WithContext(ctx).
-		Model(&models.MonitorMetric{}).
-		Where("agent_id = ?", agentID).
-		Distinct("monitor_id").
-		Pluck("monitor_id", &monitorIDs).Error
-	if err != nil {
-		return nil, err
-	}
-
-	// 对每个监控项获取最新的一条记录
 	var metrics []models.MonitorMetric
-	for _, monitorID := range monitorIDs {
-		var metric models.MonitorMetric
-		err := r.db.WithContext(ctx).
-			Where("agent_id = ? AND monitor_id = ?", agentID, monitorID).
-			Order("timestamp DESC").
-			First(&metric).Error
-		if err == nil {
-			metrics = append(metrics, metric)
-		}
-	}
-
-	return metrics, nil
+	err := r.db.WithContext(ctx).Raw(`
+		SELECT m.*
+		FROM monitor_metrics m
+		INNER JOIN (
+			SELECT monitor_id, MAX(timestamp) AS ts
+			FROM monitor_metrics
+			WHERE agent_id = ?
+			GROUP BY monitor_id
+		) latest ON m.monitor_id = latest.monitor_id AND m.timestamp = latest.ts
+		WHERE m.agent_id = ?
+		ORDER BY m.monitor_id
+	`, agentID, agentID).Scan(&metrics).Error
+	return metrics, err
 }
 
 // GetMonitorMetricsByName 获取指定监控项的历史数据
@@ -682,18 +669,6 @@ func (r *MetricRepo) DeleteMonitorMetrics(ctx context.Context, monitorID string)
 
 // DeleteAgentMetrics 删除指定探针的所有指标数据
 func (r *MetricRepo) DeleteAgentMetrics(ctx context.Context, agentID string) error {
-	tx := r.db.WithContext(ctx).Begin()
-	if tx.Error != nil {
-		return tx.Error
-	}
-
-	defer func() {
-		if r := recover(); r != nil {
-			tx.Rollback()
-		}
-	}()
-
-	// 删除各类指标数据
 	tables := []interface{}{
 		&models.CPUMetric{},
 		&models.MemoryMetric{},
@@ -707,71 +682,50 @@ func (r *MetricRepo) DeleteAgentMetrics(ctx context.Context, agentID string) err
 		&models.MonitorMetric{},
 	}
 
-	for _, table := range tables {
-		if err := tx.Where("agent_id = ?", agentID).Delete(table).Error; err != nil {
-			tx.Rollback()
-			return err
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for _, table := range tables {
+			if err := tx.Where("agent_id = ?", agentID).Delete(table).Error; err != nil {
+				return err
+			}
 		}
-	}
-
-	return tx.Commit().Error
+		return nil
+	})
 }
 
 // GetLatestMonitorMetricsByType 获取指定类型的最新监控指标（所有探针）
 func (r *MetricRepo) GetLatestMonitorMetricsByType(ctx context.Context, monitorType string) ([]*models.MonitorMetric, error) {
 	var metrics []*models.MonitorMetric
 
-	// 获取所有符合类型的监控项
-	var monitorIDs []string
-	err := r.db.WithContext(ctx).
-		Model(&models.MonitorMetric{}).
-		Where("type = ?", monitorType).
-		Distinct("monitor_id").
-		Pluck("monitor_id", &monitorIDs).Error
-	if err != nil {
-		return nil, err
-	}
+	err := r.db.WithContext(ctx).Raw(`
+		SELECT m.*
+		FROM monitor_metrics m
+		INNER JOIN (
+			SELECT monitor_id, MAX(timestamp) AS ts
+			FROM monitor_metrics
+			WHERE type = ?
+			GROUP BY monitor_id
+		) latest ON m.monitor_id = latest.monitor_id AND m.timestamp = latest.ts
+		WHERE m.type = ?
+		ORDER BY m.monitor_id
+	`, monitorType, monitorType).Scan(&metrics).Error
 
-	// 对每个监控项获取最新的一条记录
-	for _, monitorID := range monitorIDs {
-		var metric models.MonitorMetric
-		err := r.db.WithContext(ctx).
-			Where("monitor_id = ? AND type = ?", monitorID, monitorType).
-			Order("timestamp DESC").
-			First(&metric).Error
-		if err == nil {
-			metrics = append(metrics, &metric)
-		}
-	}
-
-	return metrics, nil
+	return metrics, err
 }
 
 // GetAllLatestMonitorMetrics 获取所有最新的监控指标（所有探针的所有监控项，每个监控项的最新一条）
 func (r *MetricRepo) GetAllLatestMonitorMetrics(ctx context.Context) ([]*models.MonitorMetric, error) {
 	var metrics []*models.MonitorMetric
 
-	// 获取所有监控项ID
-	var monitorIDs []string
-	err := r.db.WithContext(ctx).
-		Model(&models.MonitorMetric{}).
-		Distinct("monitor_id").
-		Pluck("monitor_id", &monitorIDs).Error
-	if err != nil {
-		return nil, err
-	}
+	err := r.db.WithContext(ctx).Raw(`
+		SELECT m.*
+		FROM monitor_metrics m
+		INNER JOIN (
+			SELECT monitor_id, MAX(timestamp) AS ts
+			FROM monitor_metrics
+			GROUP BY monitor_id
+		) latest ON m.monitor_id = latest.monitor_id AND m.timestamp = latest.ts
+		ORDER BY m.monitor_id
+	`).Scan(&metrics).Error
 
-	// 对每个监控项获取最新的一条记录
-	for _, monitorID := range monitorIDs {
-		var metric models.MonitorMetric
-		err := r.db.WithContext(ctx).
-			Where("monitor_id = ?", monitorID).
-			Order("timestamp DESC").
-			First(&metric).Error
-		if err == nil {
-			metrics = append(metrics, &metric)
-		}
-	}
-
-	return metrics, nil
+	return metrics, err
 }

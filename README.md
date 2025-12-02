@@ -268,3 +268,10 @@ ports:
 仅支持 Linux ，需要支持 `sensors` 命令。
 
 可以使用 `sensors -A` 进行测试。
+
+#### IP 归属地
+
+- 注意：GeoIP 数据库需要手动下载并配置路径
+- 下载地址 https://github.com/P3TERX/GeoLite.mmdb
+- 下载后将config.yaml 中的 GeoIP.Enabled 配置启用，并把路径替换为您的实际路径
+- 需要同步修改 docker-compose.yaml 中的文件映射

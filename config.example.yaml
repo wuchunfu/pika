@@ -46,3 +46,6 @@ App:
     AllowedUsers:  # 允许登录的 GitHub 用户名白名单，不配置或留空则允许所有用户
       - "your-github-username"
       - "another-username"
+  GeoIP:
+    Enabled: false
+    DBPath: "./GeoLite2-City.mmdb"

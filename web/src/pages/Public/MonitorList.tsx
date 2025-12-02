@@ -5,6 +5,7 @@ import {AlertCircle, CheckCircle2, Clock, Loader2, Shield} from 'lucide-react';
 import {getPublicMonitors} from '@/api/monitor.ts';
 import type {PublicMonitor} from '@/types';
 import {usePublicLayout} from '../PublicLayout';
+import {cn} from '@/lib/utils';
 
 const formatTime = (ms: number): string => {
     if (!ms || ms <= 0) return '0 ms';
@@ -50,7 +51,10 @@ const StatusBadge = ({status}: { status: string }) => {
 
     return (
         <div
-            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${containerClass}`}>
+            className={cn(
+                "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
+                containerClass
+            )}>
             {icon}
             {label}
         </div>
@@ -64,7 +68,7 @@ const UptimeBar = ({uptime}: { uptime: number }) => {
     return (
         <div className="relative h-2 w-full overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-900/60">
             <div
-                className={`absolute inset-y-0 left-0 ${colorClass} transition-all duration-500`}
+                className={cn("absolute inset-y-0 left-0 transition-all duration-500", colorClass)}
                 style={{width: `${percentage}%`}}
             />
         </div>
@@ -189,43 +193,47 @@ const MonitorList = () => {
 
                             {hasCert && (
                                 <div
-                                    className={`flex items-center justify-between rounded-lg border px-3 py-2.5 ${
+                                    className={cn(
+                                        "flex items-center justify-between rounded-lg border px-3 py-2.5",
                                         certExpired
                                             ? 'border-red-200 dark:border-red-500/40 bg-red-50 dark:bg-red-500/10'
                                             : certExpiringSoon
                                                 ? 'border-yellow-200 dark:border-yellow-500/40 bg-yellow-50 dark:bg-yellow-500/10'
                                                 : 'border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900/60'
-                                    }`}>
+                                    )}>
                                     <div className="flex items-center gap-2">
                                         <Shield
-                                            className={`h-4 w-4 ${
+                                            className={cn(
+                                                "h-4 w-4",
                                                 certExpired
                                                     ? 'text-red-600 dark:text-red-400'
                                                     : certExpiringSoon
                                                         ? 'text-yellow-600 dark:text-yellow-500'
                                                         : 'text-blue-600 dark:text-blue-400'
-                                            }`}/>
+                                            )}/>
                                         <span className="text-xs font-medium text-slate-600 dark:text-slate-300">证书到期</span>
                                     </div>
                                     <div className="text-right">
                                         <div
-                                            className={`text-xs font-medium ${
+                                            className={cn(
+                                                "text-xs font-medium",
                                                 certExpired
                                                     ? 'text-red-700 dark:text-red-300'
                                                     : certExpiringSoon
                                                         ? 'text-yellow-700 dark:text-yellow-300'
                                                         : 'text-slate-700 dark:text-slate-200'
-                                            }`}>
+                                            )}>
                                             {formatDate(stats.certExpiryDate)}
                                         </div>
                                         <div
-                                            className={`text-xs ${
+                                            className={cn(
+                                                "text-xs",
                                                 certExpired
                                                     ? 'text-red-600 dark:text-red-400'
                                                     : certExpiringSoon
                                                         ? 'text-yellow-600 dark:text-yellow-400'
                                                         : 'text-slate-500 dark:text-slate-400'
-                                            }`}>
+                                            )}>
                                             {certExpired ? `已过期 ${Math.abs(stats.certExpiryDays)} 天` : `剩余 ${stats.certExpiryDays} 天`}
                                         </div>
                                     </div>
@@ -332,32 +340,34 @@ const MonitorList = () => {
                                     {hasCert ? (
                                         <div className="flex items-center gap-2">
                                             <Shield
-                                                className={`h-4 w-4 ${
+                                                className={cn(
+                                                    "h-4 w-4",
                                                     certExpired
                                                         ? 'text-red-600 dark:text-red-400'
                                                         : certExpiringSoon
                                                             ? 'text-yellow-600 dark:text-yellow-500'
                                                             : 'text-slate-400 dark:text-slate-500'
-                                                }`}/>
+                                                )}/>
                                             <div className="text-xs">
                                                 <div
-                                                    className={`font-medium ${
+                                                    className={cn(
+                                                        "font-medium",
                                                         certExpired
                                                             ? 'text-red-700 dark:text-red-300'
                                                             : certExpiringSoon
                                                                 ? 'text-yellow-700 dark:text-yellow-300'
                                                                 : 'text-slate-700 dark:text-slate-200'
-                                                    }`}>
+                                                    )}>
                                                     {formatDate(stats.certExpiryDate)}
                                                 </div>
                                                 <div
-                                                    className={
+                                                    className={cn(
                                                         certExpired
                                                             ? 'text-red-600 dark:text-red-400'
                                                             : certExpiringSoon
                                                                 ? 'text-yellow-600 dark:text-yellow-400'
                                                                 : 'text-slate-500 dark:text-slate-400'
-                                                    }>
+                                                    )}>
                                                     {certExpired ? `已过期 ${Math.abs(stats.certExpiryDays)} 天` : `剩余 ${stats.certExpiryDays} 天`}
                                                 </div>
                                             </div>

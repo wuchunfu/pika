@@ -17,6 +17,7 @@ import type {TooltipProps} from 'recharts';
 import {Area, AreaChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis,} from 'recharts';
 import {type AggregatedMonitorMetric, getMonitorHistory, getMonitorStatsById, getMonitorAgentStats} from '@/api/monitor.ts';
 import type {MonitorStats, PublicMonitor} from '@/types';
+import {cn} from '@/lib/utils';
 
 const formatTime = (ms: number): string => {
     if (!ms || ms <= 0) return '0 ms';
@@ -94,7 +95,10 @@ const ChartPlaceholder = ({
     heightClass?: string;
 }) => (
     <div
-        className={`flex ${heightClass} items-center justify-center rounded-lg border border-dashed border-slate-200 dark:border-slate-800 text-sm text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-900`}
+        className={cn(
+            "flex items-center justify-center rounded-lg border border-dashed border-slate-200 dark:border-slate-800 text-sm text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-900",
+            heightClass
+        )}
     >
         <div className="text-center">
             <Icon className="mx-auto mb-3 h-10 w-10 text-slate-300 dark:text-slate-600"/>
@@ -150,7 +154,10 @@ const StatusBadge = ({status}: { status: string }) => {
 
     return (
         <div
-            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium ${containerClass}`}>
+            className={cn(
+                "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium",
+                containerClass
+            )}>
             {icon}
             {label}
         </div>
@@ -165,7 +172,7 @@ const UptimeBar = ({uptime}: { uptime: number }) => {
         <div className="flex items-center gap-2">
             <div className="relative h-3 w-full overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-700">
                 <div
-                    className={`absolute inset-y-0 left-0 ${colorClass} transition-all duration-500`}
+                    className={cn("absolute inset-y-0 left-0 transition-all duration-500", colorClass)}
                     style={{width: `${percentage}%`}}
                 />
             </div>
@@ -208,7 +215,7 @@ const StatCard = ({icon, label, value, color = 'blue'}: {
             className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950/60 p-4 transition hover:-translate-y-0.5">
             <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3">
-                    <div className={`flex h-11 w-11 items-center justify-center rounded-xl ${theme.icon}`}>
+                    <div className={cn("flex h-11 w-11 items-center justify-center rounded-xl", theme.icon)}>
                         {icon}
                     </div>
                     <div>
@@ -218,7 +225,7 @@ const StatCard = ({icon, label, value, color = 'blue'}: {
                         <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">当前指标</div>
                     </div>
                 </div>
-                <span className={`text-xl font-bold ${theme.accent}`}>{value}</span>
+                <span className={cn("text-xl font-bold", theme.accent)}>{value}</span>
             </div>
         </div>
     );
@@ -287,11 +294,12 @@ const TimeRangeSelector = ({
                     key={option.value}
                     type="button"
                     onClick={() => onChange(option.value)}
-                    className={`rounded-lg border px-3 py-1.5 text-sm transition ${
+                    className={cn(
+                        "rounded-lg border px-3 py-1.5 text-sm transition",
                         isActive
                             ? 'border-blue-200 dark:border-blue-400 bg-blue-600 dark:bg-blue-500 text-white'
                             : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:border-blue-200 dark:hover:border-blue-500 hover:text-blue-600 dark:hover:text-blue-200'
-                    }`}
+                    )}
                 >
                     {option.label}
                 </button>
@@ -515,38 +523,42 @@ const MonitorDetail = () => {
 
                         {/* 证书信息 */}
                         {hasCert && (
-                            <div className={`mt-6 rounded-2xl border p-6 ${
+                            <div className={cn(
+                                "mt-6 rounded-2xl border p-6",
                                 certExpired
                                     ? 'border-red-200 dark:border-red-500/40 bg-red-50 dark:bg-red-500/10'
                                     : certExpiringSoon
                                         ? 'border-amber-200 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10'
                                         : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950/60'
-                            }`}>
+                            )}>
                                 <div className="flex items-center gap-3">
-                                    <Shield className={`h-6 w-6 ${
+                                    <Shield className={cn(
+                                        "h-6 w-6",
                                         certExpired
                                             ? 'text-red-600 dark:text-red-200'
                                             : certExpiringSoon
                                                 ? 'text-amber-600 dark:text-amber-200'
                                                 : 'text-slate-600 dark:text-slate-400'
-                                    }`}/>
+                                    )}/>
                                     <div>
-                                        <h3 className={`text-lg font-semibold ${
+                                        <h3 className={cn(
+                                            "text-lg font-semibold",
                                             certExpired
                                                 ? 'text-red-900 dark:text-red-100'
                                                 : certExpiringSoon
                                                     ? 'text-amber-900 dark:text-amber-100'
                                                     : 'text-slate-900 dark:text-slate-50'
-                                        }`}>
+                                        )}>
                                             TLS 证书信息
                                         </h3>
-                                        <p className={`mt-1 text-sm ${
+                                        <p className={cn(
+                                            "mt-1 text-sm",
                                             certExpired
                                                 ? 'text-red-700 dark:text-red-200'
                                                 : certExpiringSoon
                                                     ? 'text-amber-700 dark:text-amber-200'
                                                     : 'text-slate-600 dark:text-slate-400'
-                                        }`}>
+                                        )}>
                                             证书到期时间: {formatDate(monitorDetail.certExpiryDate)}
                                             {certExpired ? (
                                                 <span

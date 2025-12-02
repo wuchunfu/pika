@@ -5,6 +5,7 @@ import {Cpu, EthernetPortIcon, HardDrive, Loader2, MemoryStick, Network} from 'l
 import {listAgents, getPublicTags} from '@/api/agent.ts';
 import type {Agent, LatestMetrics} from '@/types';
 import {usePublicLayout} from '../PublicLayout';
+import {cn} from '@/lib/utils';
 
 interface AgentWithMetrics extends Agent {
     metrics?: LatestMetrics;
@@ -187,7 +188,10 @@ const ServerList = () => {
                         key={agent.id}
                         tabIndex={0}
                         to={`/servers/${agent.id}`}
-                        className="group relative flex h-full cursor-pointer flex-col gap-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-transparent p-5 transition duration-200 hover:border-blue-300 dark:hover:border-blue-500/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200"
+                        className={cn(
+                            "group relative flex h-full cursor-pointer flex-col gap-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-transparent p-5 transition duration-200 hover:border-blue-300 dark:hover:border-blue-500/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200",
+                            agent.status !== 1 && "filter grayscale"
+                        )}
                     >
                         <div className="flex flex-1 flex-col gap-4">
                             <div className="flex flex-col gap-2">
@@ -197,8 +201,12 @@ const ServerList = () => {
                                             {agent.name || agent.hostname}
                                         </h3>
                                         <span
-                                            className={`inline-flex items-center gap-1.5 rounded-lg ${statusDisplay.bgColor} px-2.5 py-1 text-xs font-medium ${statusDisplay.textColor}`}>
-                                            <span className={`flex h-1.5 w-1.5 rounded-lg ${statusDisplay.dotColor}`}/>
+                                            className={cn(
+                                                "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium",
+                                                statusDisplay.bgColor,
+                                                statusDisplay.textColor
+                                            )}>
+                                            <span className={cn("flex h-1.5 w-1.5 rounded-lg", statusDisplay.dotColor)}/>
                                             {statusDisplay.text}
                                         </span>
                                     </div>
@@ -371,7 +379,10 @@ const ServerList = () => {
                                         handleNavigate(agent.id);
                                     }
                                 }}
-                                className="cursor-pointer transition hover:bg-blue-50 dark:hover:bg-slate-900/70 focus-within:bg-blue-50 dark:focus-within:bg-slate-900/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-200"
+                                className={cn(
+                                    "cursor-pointer transition hover:bg-blue-50 dark:hover:bg-slate-900/70 focus-within:bg-blue-50 dark:focus-within:bg-slate-900/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-200",
+                                    agent.status !== 1 && "filter grayscale"
+                                )}
                             >
 
                                 <td className="px-5 py-4 align-center">
@@ -381,8 +392,12 @@ const ServerList = () => {
                                                 {agent.name || agent.hostname}
                                             </span>
                                             <span
-                                                className={`inline-flex items-center gap-1 rounded-lg ${statusDisplay.bgColor} px-2 py-0.5 text-xs font-medium ${statusDisplay.textColor}`}>
-                                                <span className={`h-1.5 w-1.5 rounded-lg ${statusDisplay.dotColor}`}/>
+                                                className={cn(
+                                                    "inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium",
+                                                    statusDisplay.bgColor,
+                                                    statusDisplay.textColor
+                                                )}>
+                                                <span className={cn("h-1.5 w-1.5 rounded-lg", statusDisplay.dotColor)}/>
                                                 {statusDisplay.text}
                                             </span>
                                         </div>
@@ -491,18 +506,20 @@ const ServerList = () => {
                 <div className="flex items-center gap-3 overflow-x-auto pb-2">
                     <button
                         onClick={() => setSelectedTag('')}
-                        className={`cursor-pointer inline-flex items-center gap-2 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 ${
+                        className={cn(
+                            "cursor-pointer inline-flex items-center gap-2 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200",
                             selectedTag === ''
                                 ? 'bg-blue-500 dark:bg-sky-500 text-white shadow-md shadow-blue-500/30 dark:shadow-sky-500/30'
                                 : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-                        }`}
+                        )}
                     >
                         <span>全部</span>
-                        <span className={`inline-flex items-center justify-center rounded-md px-2 py-0.5 text-xs font-semibold ${
+                        <span className={cn(
+                            "inline-flex items-center justify-center rounded-md px-2 py-0.5 text-xs font-semibold",
                             selectedTag === ''
                                 ? 'bg-blue-400 dark:bg-sky-400 text-white'
                                 : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
-                        }`}>
+                        )}>
                             {agents.length}
                         </span>
                     </button>
@@ -514,18 +531,20 @@ const ServerList = () => {
                             <button
                                 key={tag}
                                 onClick={() => setSelectedTag(tag)}
-                                className={`cursor-pointer inline-flex items-center gap-2 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 ${
+                                className={cn(
+                                    "cursor-pointer inline-flex items-center gap-2 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200",
                                     selectedTag === tag
                                         ? 'bg-blue-500 dark:bg-sky-500 text-white shadow-md shadow-blue-500/30 dark:shadow-sky-500/30'
                                         : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-                                }`}
+                                )}
                             >
                                 <span>{tag}</span>
-                                <span className={`inline-flex items-center justify-center rounded-md px-2 py-0.5 text-xs font-semibold ${
+                                <span className={cn(
+                                    "inline-flex items-center justify-center rounded-md px-2 py-0.5 text-xs font-semibold",
                                     selectedTag === tag
                                         ? 'bg-blue-400 dark:bg-sky-400 text-white'
                                         : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
-                                }`}>
+                                )}>
                                     {count}
                                 </span>
                             </button>

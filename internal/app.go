@@ -381,6 +381,10 @@ func startMetricsMonitoring(ctx context.Context, components *AppComponents, logg
 					logger.Debug("获取探针最新指标失败", zap.String("agentId", agent.ID), zap.Error(err))
 					continue
 				}
+				if latest == nil {
+					logger.Debug("探针最新指标为空", zap.String("agentId", agent.ID))
+					continue
+				}
 
 				// 提取 CPU、内存、磁盘使用率、网速
 				var cpuUsage, memoryUsage, diskUsage, networkSpeed float64

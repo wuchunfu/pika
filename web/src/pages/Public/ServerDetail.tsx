@@ -45,6 +45,7 @@ import type {
     LatestMetrics
 } from '@/types';
 import dayjs from "dayjs";
+import {cn} from '@/lib/utils';
 
 const formatBytes = (bytes: number | undefined | null): string => {
     if (!bytes || bytes <= 0) return '0 B';
@@ -133,7 +134,10 @@ const ChartPlaceholder = ({
     heightClass?: string;
 }) => (
     <div
-        className={`flex ${heightClass} items-center justify-center rounded-lg border border-dashed border-slate-200 dark:border-slate-800 text-sm text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-900`}
+        className={cn(
+            "flex items-center justify-center rounded-lg border border-dashed border-slate-200 dark:border-slate-800 text-sm text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-900",
+            heightClass
+        )}
     >
         <div className="text-center">
             <Icon className="mx-auto mb-3 h-10 w-10 text-slate-300 dark:text-slate-600"/>
@@ -225,11 +229,12 @@ const TimeRangeSelector = ({
                     key={option.value}
                     type="button"
                     onClick={() => onChange(option.value)}
-                    className={`rounded-lg border px-3 py-1.5 text-xs sm:text-sm font-medium transition whitespace-nowrap ${
+                    className={cn(
+                        "rounded-lg border px-3 py-1.5 text-xs sm:text-sm font-medium transition whitespace-nowrap",
                         isActive
-                            ? 'border-blue-200 dark:border-blue-400 bg-blue-600 dark:bg-blue-500 text-white '
+                            ? 'border-blue-200 dark:border-blue-400 bg-blue-600 dark:bg-blue-500 text-white'
                             : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:border-blue-200 dark:hover:border-blue-500 hover:text-blue-600 dark:hover:text-blue-200'
-                    }`}
+                    )}
                 >
                     {option.label}
                 </button>
@@ -404,12 +409,12 @@ const SnapshotGrid = ({cards}: { cards: SnapshotCardData[] }) => (
                 >
                     <div className="mb-3 flex items-start justify-between">
                         <div className="flex items-center gap-2">
-                            <span className={`flex h-9 w-9 items-center justify-center rounded-lg ${theme.icon}`}>
+                            <span className={cn("flex h-9 w-9 items-center justify-center rounded-lg", theme.icon)}>
                                 <card.icon className="h-4 w-4"/>
                             </span>
                             <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">{card.title}</p>
                         </div>
-                        <span className={`text-xl font-bold ${theme.highlight}`}>{card.usagePercent}</span>
+                        <span className={cn("text-xl font-bold", theme.highlight)}>{card.usagePercent}</span>
                     </div>
                     <div className="space-y-2">
                         {card.metrics.map((metric) => (
@@ -853,13 +858,14 @@ const ServerDetail = () => {
                                         <div className="flex flex-wrap items-center gap-3">
                                             <h1 className="text-3xl font-semibold text-white">{displayName}</h1>
                                             <span
-                                                className={`inline-flex items-center gap-1 rounded-full px-3 py-0.5 text-xs font-medium ${
+                                                className={cn(
+                                                    "inline-flex items-center gap-1 rounded-full px-3 py-0.5 text-xs font-medium",
                                                     isOnline
                                                         ? 'bg-emerald-400/30 text-white'
                                                         : 'bg-white/20 text-white/80'
-                                                }`}
+                                                )}
                                             >
-                                                <span className={`h-1.5 w-1.5 rounded-full ${statusDotStyles}`}/>
+                                                <span className={cn("h-1.5 w-1.5 rounded-full", statusDotStyles)}/>
                                                 {statusText}
                                             </span>
                                         </div>

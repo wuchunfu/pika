@@ -11,7 +11,6 @@ import (
 
 	"github.com/dushixiang/pika/internal/config"
 	"github.com/dushixiang/pika/internal/handler"
-	"github.com/dushixiang/pika/internal/migrations"
 	"github.com/dushixiang/pika/internal/models"
 	"github.com/dushixiang/pika/internal/scheduler"
 	"github.com/dushixiang/pika/pkg/replace"
@@ -40,12 +39,6 @@ func setup(app *orz.App) error {
 	// 数据库迁移
 	if err := autoMigrate(app.GetDatabase()); err != nil {
 		return err
-	}
-
-	// 执行 DDNS domains 字段拆分迁移
-	if err := migrations.MigrateDDNSDomainsSplit(app.GetDatabase(), app.Logger()); err != nil {
-		app.Logger().Error("DDNS domains 迁移失败", zap.Error(err))
-		// 不返回错误，继续启动（迁移失败不应阻止应用启动）
 	}
 
 	// 读取应用配置

@@ -80,6 +80,7 @@ type PublicMonitorOverview struct {
 	AgentIds         []string `json:"agentIds"`
 	AgentCount       int      `json:"agentCount"`
 	LastCheckStatus  string   `json:"lastCheckStatus"`
+	LastCheckError   string   `json:"lastCheckError"`
 	CurrentResponse  int64    `json:"currentResponse"`
 	AvgResponse24h   int64    `json:"avgResponse24h"`
 	Uptime24h        float64  `json:"uptime24h"`
@@ -267,6 +268,7 @@ func (s *MonitorService) buildMonitorOverview(monitor models.MonitorTask, summar
 		AgentIds:         cloneAgentIDs(monitor.AgentIds),
 		AgentCount:       summary.AgentCount,
 		LastCheckStatus:  summary.LastCheckStatus,
+		LastCheckError:   summary.LastCheckError,
 		CurrentResponse:  summary.CurrentResponse,
 		AvgResponse24h:   summary.AvgResponse24h,
 		Uptime24h:        summary.Uptime24h,
@@ -280,6 +282,7 @@ func (s *MonitorService) buildMonitorOverview(monitor models.MonitorTask, summar
 type monitorOverviewSummary struct {
 	AgentCount      int
 	LastCheckStatus string
+	LastCheckError  string
 	CurrentResponse int64
 	AvgResponse24h  int64
 	Uptime24h       float64
@@ -303,6 +306,7 @@ func aggregateMonitorStats(stats []models.MonitorStats) monitorOverviewSummary {
 	var totalUptime24h float64
 	var totalUptime30d float64
 	var lastCheckTime int64
+	var lastCheckError string
 	var certExpiryDate int64
 	var certExpiryDays int
 	hasCert := false
@@ -315,8 +319,15 @@ func aggregateMonitorStats(stats []models.MonitorStats) monitorOverviewSummary {
 		totalUptime24h += stat.Uptime24h
 		totalUptime30d += stat.Uptime30d
 
+		// 记录最新的检测时间和对应的错误信息
 		if stat.LastCheckTime > lastCheckTime {
 			lastCheckTime = stat.LastCheckTime
+			// 如果这是最新的检测且状态为 down，记录错误信息
+			if stat.LastCheckStatus == "down" {
+				lastCheckError = stat.LastCheckError
+			} else {
+				lastCheckError = ""
+			}
 		}
 
 		switch stat.LastCheckStatus {
@@ -344,6 +355,7 @@ func aggregateMonitorStats(stats []models.MonitorStats) monitorOverviewSummary {
 		summary.Uptime30d = totalUptime30d / float64(count)
 	}
 	summary.LastCheckTime = lastCheckTime
+	summary.LastCheckError = lastCheckError
 
 	switch {
 	case hasUp:
@@ -617,6 +629,7 @@ func (s *MonitorService) calculateStatsForAgentMonitor(ctx context.Context, agen
 		stats.CurrentResponse = lastMetric.ResponseTime
 		stats.LastCheckTime = lastMetric.Timestamp
 		stats.LastCheckStatus = lastMetric.Status
+		stats.LastCheckError = lastMetric.Error
 
 		// 从最新的检测结果中获取证书信息
 		if lastMetric.CertExpiryTime > 0 {

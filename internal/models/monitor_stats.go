@@ -21,6 +21,7 @@ type MonitorStats struct {
 	SuccessChecks30d int64   `json:"successChecks30d"`                      // 30天成功次数
 	LastCheckTime    int64   `json:"lastCheckTime"`                         // 最后检测时间
 	LastCheckStatus  string  `json:"lastCheckStatus"`                       // 最后检测状态: up/down
+	LastCheckError   string  `json:"lastCheckError"`                        // 最后检测错误信息
 	UpdatedAt        int64   `gorm:"autoUpdateTime:milli" json:"updatedAt"` // 更新时间
 }
 

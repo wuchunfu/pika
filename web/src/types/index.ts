@@ -285,6 +285,7 @@ export interface PublicMonitor {
     agentIds: string[];
     agentCount: number;
     lastCheckStatus: string;
+    lastCheckError?: string;
     currentResponse: number;
     avgResponse24h: number;
     uptime24h: number;
@@ -315,6 +316,7 @@ export interface MonitorStats {
     successChecks30d: number;     // 30天成功次数
     lastCheckTime: number;        // 最后检测时间
     lastCheckStatus: string;      // 最后检测状态: up/down
+    lastCheckError?: string;      // 最后检测错误信息
     updatedAt: number;            // 更新时间
 }
 

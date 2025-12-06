@@ -11,8 +11,9 @@ import (
 	"github.com/dushixiang/pika/internal/models"
 	"github.com/dushixiang/pika/internal/protocol"
 	"github.com/dushixiang/pika/internal/repo"
-	ws "github.com/dushixiang/pika/internal/websocket"
-	"github.com/go-orz/cache"
+	"github.com/dushixiang/pika/internal/websocket"
+
+	"github.com/go-orz/toolkit/syncx"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -29,8 +30,8 @@ type DDNSService struct {
 	ConfigRepo      *repo.DDNSConfigRepo // 导出用于 handler 的 PageBuilder
 	recordRepo      *repo.DDNSRecordRepo
 	propertyService *PropertyService
-	wsManager       *ws.Manager
-	ipCache         cache.Cache[string, *ipCacheData] // 使用内存缓存存储 IP
+	wsManager       *websocket.Manager
+	ipCache         *syncx.SafeMap[string, *ipCacheData] // 使用内存缓存存储 IP
 }
 
 func NewDDNSService(
@@ -38,7 +39,7 @@ func NewDDNSService(
 	configRepo *repo.DDNSConfigRepo,
 	recordRepo *repo.DDNSRecordRepo,
 	propertyService *PropertyService,
-	wsManager *ws.Manager,
+	wsManager *websocket.Manager,
 ) *DDNSService {
 	s := &DDNSService{
 		logger:          logger,
@@ -46,7 +47,7 @@ func NewDDNSService(
 		recordRepo:      recordRepo,
 		propertyService: propertyService,
 		wsManager:       wsManager,
-		ipCache:         cache.New[string, *ipCacheData](24 * time.Hour), // 24小时过期，自动清理
+		ipCache:         syncx.NewSafeMap[string, *ipCacheData](),
 	}
 
 	// 初始化 IP 缓存：从 DNS 服务商查询当前记录
@@ -126,7 +127,7 @@ func (s *DDNSService) initIPCache() {
 
 		// 如果查询到了任何 IP，就放入缓存
 		if cacheData.IPv4 != "" || cacheData.IPv6 != "" {
-			s.ipCache.Set(config.AgentID, cacheData, 24*time.Hour)
+			s.ipCache.Set(config.AgentID, cacheData)
 		}
 	}
 
@@ -213,11 +214,8 @@ func (s *DDNSService) HandleIPReport(ctx context.Context, agentID string, ipData
 		}
 	}
 
-	// 更新内存缓存（24小时过期）
-	s.ipCache.Set(agentID, &ipCacheData{
-		IPv4: ipData.IPv4,
-		IPv6: ipData.IPv6,
-	}, 24*time.Hour)
+	// 更新内存缓存
+	s.ipCache.Set(agentID, &ipCacheData{IPv4: ipData.IPv4, IPv6: ipData.IPv6})
 
 	return nil
 }

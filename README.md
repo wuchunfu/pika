@@ -268,12 +268,6 @@ ports:
 
 你可以参考 [agent.example.yaml](cmd/agent/agent.example.yaml) 修改 `collector` 下的 `network_include` 或者 `network_exclude` 配置。
 
-#### 温度采集
-
-仅支持 Linux ，需要支持 `sensors` 命令。
-
-可以使用 `sensors -A` 进行测试。
-
 #### IP 归属地
 
 - 注意：GeoIP 数据库需要手动下载并配置路径

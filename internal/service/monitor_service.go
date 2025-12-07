@@ -33,6 +33,16 @@ type MonitorService struct {
 	overviewCache cache.Cache[string, []PublicMonitorOverview]
 	// 监控统计缓存：缓存单个监控任务的统计数据
 	statsCache cache.Cache[string, []models.MonitorStats]
+
+	// 调度器引用（用于动态管理任务）
+	scheduler MonitorScheduler
+}
+
+// MonitorScheduler 调度器接口（避免循环依赖）
+type MonitorScheduler interface {
+	AddTask(monitorID string, interval int) error
+	UpdateTask(monitorID string, interval int) error
+	RemoveTask(monitorID string)
 }
 
 func NewMonitorService(logger *zap.Logger, db *gorm.DB, wsManager *ws.Manager) *MonitorService {
@@ -49,6 +59,11 @@ func NewMonitorService(logger *zap.Logger, db *gorm.DB, wsManager *ws.Manager) *
 		overviewCache: cache.New[string, []PublicMonitorOverview](5 * time.Minute),
 		statsCache:    cache.New[string, []models.MonitorStats](5 * time.Minute),
 	}
+}
+
+// SetScheduler 设置调度器（由外部注入，避免循环依赖）
+func (s *MonitorService) SetScheduler(scheduler MonitorScheduler) {
+	s.scheduler = scheduler
 }
 
 type MonitorTaskRequest struct {
@@ -126,6 +141,18 @@ func (s *MonitorService) CreateMonitor(ctx context.Context, req *MonitorTaskRequ
 		return nil, err
 	}
 
+	// 清理缓存
+	s.clearCache(task.ID)
+
+	// 如果任务启用，添加到调度器
+	if task.Enabled && s.scheduler != nil {
+		if err := s.scheduler.AddTask(task.ID, task.Interval); err != nil {
+			s.logger.Error("添加监控任务到调度器失败",
+				zap.String("taskID", task.ID),
+				zap.Error(err))
+		}
+	}
+
 	return task, nil
 }
 
@@ -134,6 +161,10 @@ func (s *MonitorService) UpdateMonitor(ctx context.Context, id string, req *Moni
 	if err != nil {
 		return nil, err
 	}
+
+	// 记录旧状态，用于判断是否需要更新调度器
+	oldEnabled := task.Enabled
+	oldInterval := task.Interval
 
 	task.Enabled = req.Enabled
 	task.Name = strings.TrimSpace(req.Name)
@@ -160,11 +191,37 @@ func (s *MonitorService) UpdateMonitor(ctx context.Context, id string, req *Moni
 		return nil, err
 	}
 
+	// 清理缓存
+	s.clearCache(task.ID)
+
+	// 更新调度器
+	if s.scheduler != nil {
+		// 如果从禁用变为启用，或者间隔时间改变
+		if !oldEnabled && task.Enabled {
+			// 添加任务到调度器
+			if err := s.scheduler.AddTask(task.ID, task.Interval); err != nil {
+				s.logger.Error("添加监控任务到调度器失败",
+					zap.String("taskID", task.ID),
+					zap.Error(err))
+			}
+		} else if oldEnabled && !task.Enabled {
+			// 从调度器中移除任务
+			s.scheduler.RemoveTask(task.ID)
+		} else if task.Enabled && oldInterval != task.Interval {
+			// 更新任务间隔
+			if err := s.scheduler.UpdateTask(task.ID, task.Interval); err != nil {
+				s.logger.Error("更新监控任务调度器失败",
+					zap.String("taskID", task.ID),
+					zap.Error(err))
+			}
+		}
+	}
+
 	return &task, nil
 }
 
 func (s *MonitorService) DeleteMonitor(ctx context.Context, id string) error {
-	return s.Transaction(ctx, func(ctx context.Context) error {
+	err := s.Transaction(ctx, func(ctx context.Context) error {
 		// 删除监控任务
 		if err := s.MonitorRepo.DeleteById(ctx, id); err != nil {
 			return err
@@ -184,6 +241,20 @@ func (s *MonitorService) DeleteMonitor(ctx context.Context, id string) error {
 
 		return nil
 	})
+
+	if err != nil {
+		return err
+	}
+
+	// 清理缓存
+	s.clearCache(id)
+
+	// 从调度器中移除
+	if s.scheduler != nil {
+		s.scheduler.RemoveTask(id)
+	}
+
+	return nil
 }
 
 // ListByAuth 返回公开展示所需的监控配置和汇总统计
@@ -456,7 +527,7 @@ func (s *MonitorService) sendMonitorConfigToAgent(agentID string, payload protoc
 }
 
 // SendMonitorTaskToAgents 向指定探针发送单个监控任务（公开方法）
-func (s *MonitorService) SendMonitorTaskToAgents(ctx context.Context, monitor models.MonitorTask, agentIDs []string) error {
+func (s *MonitorService) SendMonitorTaskToAgents(ctx context.Context, monitor models.MonitorTask) error {
 	// 实时获取所有在线探针，避免依赖数据库状态
 	onlineIDs := s.wsManager.GetAllClients()
 	if len(onlineIDs) == 0 {
@@ -817,6 +888,16 @@ func (s *MonitorService) GetMonitorByAuth(ctx context.Context, id string, isAuth
 		return nil, fmt.Errorf("monitor is disabled")
 	}
 	return monitor, nil
+}
+
+// clearCache 清理监控任务相关的所有缓存
+func (s *MonitorService) clearCache(monitorID string) {
+	// 清理概览缓存
+	s.overviewCache.Delete("overview:public")
+	s.overviewCache.Delete("overview:private")
+
+	// 清理统计缓存
+	s.statsCache.Delete(fmt.Sprintf("agents:%s", monitorID))
 }
 
 // cleanupInvalidStats 清理无效的统计数据

@@ -91,7 +91,9 @@ func setup(app *orz.App) error {
 	go startMetricsMonitoring(ctx, components, app.Logger())
 
 	// 启动服务监控任务调度器
-	monitorScheduler := scheduler.NewMonitorScheduler(components.MonitorService, app.Logger(), 10)
+	monitorScheduler := scheduler.NewMonitorScheduler(components.MonitorService, app.Logger())
+	// 将调度器注入到 MonitorService（避免循环依赖）
+	components.MonitorService.SetScheduler(monitorScheduler)
 	monitorScheduler.Start(ctx)
 
 	// 启动监控统计计算任务

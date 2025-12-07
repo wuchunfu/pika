@@ -27,6 +27,7 @@ require (
 	github.com/minio/selfupdate v0.6.0
 	github.com/oschwald/geoip2-golang v1.13.0
 	github.com/prometheus-community/pro-bing v0.7.0
+	github.com/robfig/cron/v3 v3.0.1
 	github.com/shirou/gopsutil/v4 v4.25.11
 	github.com/spf13/afero v1.15.0
 	github.com/spf13/cobra v1.10.2

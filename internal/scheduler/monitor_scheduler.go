@@ -2,51 +2,39 @@ package scheduler
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
-	"github.com/dushixiang/pika/internal/models"
 	"github.com/dushixiang/pika/internal/service"
+	"github.com/robfig/cron/v3"
 	"go.uber.org/zap"
 )
 
-// MonitorTask 调度任务
+// MonitorTask 调度任务（轻量级，仅存储必要信息）
 type MonitorTask struct {
-	ID          string
-	Monitor     models.MonitorTask
-	NextRunTime time.Time
-	Interval    time.Duration
-	Running     bool
+	ID      string       // 监控任务 ID
+	EntryID cron.EntryID // cron 任务的 ID
 }
 
 // MonitorScheduler 监控任务调度器
 type MonitorScheduler struct {
 	mu             sync.RWMutex
+	cron           *cron.Cron
 	tasks          map[string]*MonitorTask // taskID -> MonitorTask
 	monitorService *service.MonitorService
 	logger         *zap.Logger
 	ctx            context.Context
 	cancel         context.CancelFunc
-	workerCount    int
-	taskChan       chan *MonitorTask
-	reloadInterval time.Duration
-	tickInterval   time.Duration
 }
 
 // NewMonitorScheduler 创建监控任务调度器
-func NewMonitorScheduler(monitorService *service.MonitorService, logger *zap.Logger, workerCount int) *MonitorScheduler {
-	if workerCount <= 0 {
-		workerCount = 5 // 默认 5 个 worker
-	}
-
+func NewMonitorScheduler(monitorService *service.MonitorService, logger *zap.Logger) *MonitorScheduler {
 	return &MonitorScheduler{
+		cron:           cron.New(cron.WithSeconds()), // 支持秒级调度
 		tasks:          make(map[string]*MonitorTask),
 		monitorService: monitorService,
 		logger:         logger,
-		workerCount:    workerCount,
-		taskChan:       make(chan *MonitorTask, 100),
-		reloadInterval: 10 * time.Second, // 每 10 秒重新加载任务列表
-		tickInterval:   1 * time.Second,  // 每秒检查一次
 	}
 }
 
@@ -54,22 +42,13 @@ func NewMonitorScheduler(monitorService *service.MonitorService, logger *zap.Log
 func (s *MonitorScheduler) Start(ctx context.Context) {
 	s.ctx, s.cancel = context.WithCancel(ctx)
 
-	s.logger.Info("启动监控任务调度器",
-		zap.Int("workerCount", s.workerCount))
+	s.logger.Info("启动监控任务调度器")
 
-	// 启动 worker pool
-	for i := 0; i < s.workerCount; i++ {
-		go s.worker(i)
-	}
+	// 首次加载所有启用的任务
+	s.LoadTasks()
 
-	// 首次加载任务
-	s.reloadTasks()
-
-	// 启动调度循环
-	go s.scheduleLoop()
-
-	// 启动重载循环
-	go s.reloadLoop()
+	// 启动 cron 调度器
+	s.cron.Start()
 }
 
 // Stop 停止调度器
@@ -77,118 +56,16 @@ func (s *MonitorScheduler) Stop() {
 	if s.cancel != nil {
 		s.cancel()
 	}
-	close(s.taskChan)
+
+	// 停止 cron 调度器
+	ctx := s.cron.Stop()
+	<-ctx.Done()
+
 	s.logger.Info("监控任务调度器已停止")
 }
 
-// scheduleLoop 调度循环
-func (s *MonitorScheduler) scheduleLoop() {
-	ticker := time.NewTicker(s.tickInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-s.ctx.Done():
-			return
-		case now := <-ticker.C:
-			s.checkAndSchedule(now)
-		}
-	}
-}
-
-// reloadLoop 重载循环
-func (s *MonitorScheduler) reloadLoop() {
-	ticker := time.NewTicker(s.reloadInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-s.ctx.Done():
-			return
-		case <-ticker.C:
-			s.reloadTasks()
-		}
-	}
-}
-
-// checkAndSchedule 检查并调度应该执行的任务
-func (s *MonitorScheduler) checkAndSchedule(now time.Time) {
-	s.mu.RLock()
-	tasksToRun := make([]*MonitorTask, 0)
-
-	for _, task := range s.tasks {
-		// 如果任务未在运行且到了执行时间
-		if !task.Running && !now.Before(task.NextRunTime) {
-			tasksToRun = append(tasksToRun, task)
-		}
-	}
-	s.mu.RUnlock()
-
-	// 提交任务到 worker pool
-	for _, task := range tasksToRun {
-		s.mu.Lock()
-		task.Running = true
-		s.mu.Unlock()
-
-		select {
-		case s.taskChan <- task:
-			// 任务已提交
-		default:
-			// worker pool 已满，重置运行状态
-			s.mu.Lock()
-			task.Running = false
-			s.mu.Unlock()
-			s.logger.Warn("worker pool 已满，跳过任务",
-				zap.String("taskID", task.ID),
-				zap.String("taskName", task.Monitor.Name))
-		}
-	}
-}
-
-// worker worker 协程，执行任务
-func (s *MonitorScheduler) worker(id int) {
-	s.logger.Debug("启动 worker", zap.Int("workerID", id))
-
-	for {
-		select {
-		case <-s.ctx.Done():
-			return
-		case task, ok := <-s.taskChan:
-			if !ok {
-				return
-			}
-			s.executeTask(task)
-		}
-	}
-}
-
-// executeTask 执行任务
-func (s *MonitorScheduler) executeTask(task *MonitorTask) {
-	defer func() {
-		// 更新下次执行时间和状态
-		s.mu.Lock()
-		task.NextRunTime = time.Now().Add(task.Interval)
-		task.Running = false
-		s.mu.Unlock()
-	}()
-
-	s.logger.Debug("执行监控任务",
-		zap.String("taskID", task.ID),
-		zap.String("taskName", task.Monitor.Name),
-		zap.Duration("interval", task.Interval))
-
-	// 发送监控任务到探针
-	if err := s.monitorService.SendMonitorTaskToAgents(s.ctx, task.Monitor, task.Monitor.AgentIds); err != nil {
-		s.logger.Error("发送监控任务失败",
-			zap.String("taskID", task.ID),
-			zap.String("taskName", task.Monitor.Name),
-			zap.Error(err))
-	}
-}
-
-// reloadTasks 重新加载任务列表
-func (s *MonitorScheduler) reloadTasks() {
-	// 获取所有启用的监控任务
+// LoadTasks 加载所有启用的监控任务
+func (s *MonitorScheduler) LoadTasks() {
 	monitors, err := s.monitorService.FindByEnabled(context.Background(), true)
 	if err != nil {
 		s.logger.Error("加载监控任务失败", zap.Error(err))
@@ -203,40 +80,13 @@ func (s *MonitorScheduler) reloadTasks() {
 	for _, monitor := range monitors {
 		existingTasks[monitor.ID] = true
 
-		if task, exists := s.tasks[monitor.ID]; exists {
-			// 任务已存在，检查是否需要更新
-			if task.Monitor.Interval != monitor.Interval ||
-				task.Monitor.Name != monitor.Name ||
-				task.Monitor.Type != monitor.Type ||
-				task.Monitor.Target != monitor.Target {
-				// 任务参数已变化，更新任务
-				s.logger.Info("更新监控任务",
-					zap.String("taskID", monitor.ID),
-					zap.String("taskName", monitor.Name))
-				task.Monitor = monitor
-				task.Interval = time.Duration(monitor.Interval) * time.Second
-				if task.Interval <= 0 {
-					task.Interval = 60 * time.Second
-				}
-			}
-		} else {
+		if _, exists := s.tasks[monitor.ID]; !exists {
 			// 新任务，添加到调度器
-			interval := time.Duration(monitor.Interval) * time.Second
-			if interval <= 0 {
-				interval = 60 * time.Second
-			}
-
-			s.logger.Info("添加监控任务",
-				zap.String("taskID", monitor.ID),
-				zap.String("taskName", monitor.Name),
-				zap.Duration("interval", interval))
-
-			s.tasks[monitor.ID] = &MonitorTask{
-				ID:          monitor.ID,
-				Monitor:     monitor,
-				NextRunTime: time.Now(), // 立即执行一次
-				Interval:    interval,
-				Running:     false,
+			if err := s.addTaskLocked(monitor.ID, monitor.Interval); err != nil {
+				s.logger.Error("添加监控任务失败",
+					zap.String("taskID", monitor.ID),
+					zap.String("taskName", monitor.Name),
+					zap.Error(err))
 			}
 		}
 	}
@@ -244,9 +94,109 @@ func (s *MonitorScheduler) reloadTasks() {
 	// 删除已不存在或已禁用的任务
 	for taskID := range s.tasks {
 		if !existingTasks[taskID] {
-			s.logger.Info("删除监控任务", zap.String("taskID", taskID))
-			delete(s.tasks, taskID)
+			s.removeTaskLocked(taskID)
 		}
+	}
+}
+
+// AddTask 添加监控任务
+func (s *MonitorScheduler) AddTask(monitorID string, interval int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.addTaskLocked(monitorID, interval)
+}
+
+// addTaskLocked 添加监控任务（需要持有锁）
+func (s *MonitorScheduler) addTaskLocked(monitorID string, interval int) error {
+	// 如果任务已存在，先删除
+	if task, exists := s.tasks[monitorID]; exists {
+		s.cron.Remove(task.EntryID)
+		delete(s.tasks, monitorID)
+	}
+
+	// 确保间隔合法
+	if interval <= 0 {
+		interval = 60 // 默认 60 秒
+	}
+
+	// 构建 cron 表达式: @every Ns
+	spec := fmt.Sprintf("@every %ds", interval)
+
+	// 添加到 cron 调度器
+	entryID, err := s.cron.AddFunc(spec, func() {
+		s.executeTask(monitorID)
+	})
+	if err != nil {
+		return fmt.Errorf("添加 cron 任务失败: %w", err)
+	}
+
+	// 保存任务信息
+	s.tasks[monitorID] = &MonitorTask{
+		ID:      monitorID,
+		EntryID: entryID,
+	}
+
+	s.logger.Info("添加监控任务",
+		zap.String("taskID", monitorID),
+		zap.Int("interval", interval))
+
+	return nil
+}
+
+// UpdateTask 更新监控任务（先删除再添加）
+func (s *MonitorScheduler) UpdateTask(monitorID string, interval int) error {
+	// 移除旧监控任务
+	s.removeTaskLocked(monitorID)
+	// 添加新任务
+	return s.addTaskLocked(monitorID, interval)
+}
+
+// RemoveTask 删除监控任务
+func (s *MonitorScheduler) RemoveTask(monitorID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.removeTaskLocked(monitorID)
+}
+
+// removeTaskLocked 删除监控任务（需要持有锁）
+func (s *MonitorScheduler) removeTaskLocked(monitorID string) {
+	if task, exists := s.tasks[monitorID]; exists {
+		s.cron.Remove(task.EntryID)
+		delete(s.tasks, monitorID)
+		s.logger.Info("删除监控任务", zap.String("taskID", monitorID))
+	}
+}
+
+// executeTask 执行任务（从数据库查询最新配置）
+func (s *MonitorScheduler) executeTask(monitorID string) {
+	// 从数据库查询最新的监控任务配置
+	monitor, err := s.monitorService.FindById(s.ctx, monitorID)
+	if err != nil {
+		s.logger.Error("查询监控任务失败",
+			zap.String("taskID", monitorID),
+			zap.Error(err))
+		return
+	}
+
+	// 检查任务是否仍然启用
+	if !monitor.Enabled {
+		s.logger.Warn("监控任务已禁用，跳过执行",
+			zap.String("taskID", monitorID),
+			zap.String("taskName", monitor.Name))
+		return
+	}
+
+	s.logger.Debug("执行监控任务",
+		zap.String("taskID", monitorID),
+		zap.String("taskName", monitor.Name),
+		zap.Int("interval", monitor.Interval))
+
+	// 发送监控任务到探针
+	if err := s.monitorService.SendMonitorTaskToAgents(s.ctx, monitor); err != nil {
+		s.logger.Error("发送监控任务失败",
+			zap.String("taskID", monitorID),
+			zap.String("taskName", monitor.Name),
+			zap.Error(err))
 	}
 }
 
@@ -263,19 +213,29 @@ func (s *MonitorScheduler) GetTaskStatus() map[string]interface{} {
 	defer s.mu.RUnlock()
 
 	tasks := make([]map[string]interface{}, 0, len(s.tasks))
+
+	// 获取 cron 的所有条目
+	entries := s.cron.Entries()
+	entryMap := make(map[cron.EntryID]cron.Entry)
+	for _, entry := range entries {
+		entryMap[entry.ID] = entry
+	}
+
 	for _, task := range s.tasks {
-		tasks = append(tasks, map[string]interface{}{
-			"id":          task.ID,
-			"name":        task.Monitor.Name,
-			"interval":    task.Interval.Seconds(),
-			"nextRunTime": task.NextRunTime.Format(time.RFC3339),
-			"running":     task.Running,
-		})
+		taskInfo := map[string]interface{}{
+			"id": task.ID,
+		}
+
+		// 从 cron entry 获取下次执行时间
+		if entry, exists := entryMap[task.EntryID]; exists {
+			taskInfo["nextRunTime"] = entry.Next.Format(time.RFC3339)
+		}
+
+		tasks = append(tasks, taskInfo)
 	}
 
 	return map[string]interface{}{
-		"totalTasks":  len(s.tasks),
-		"workerCount": s.workerCount,
-		"tasks":       tasks,
+		"totalTasks": len(s.tasks),
+		"tasks":      tasks,
 	}
 }

@@ -2,7 +2,7 @@ database:
   enabled: true
   type: postgres
   postgres:
-    hostname: localhost
+    hostname: postgresql
     port: 5432
     username: pika
     password: pika

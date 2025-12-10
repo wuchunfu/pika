@@ -84,7 +84,7 @@ func (n *Notifier) buildMessage(agent *models.Agent, record *models.AlertRecord)
 			record.Message,
 			record.Threshold,
 			record.ActualValue,
-			time.Unix(record.FiredAt/1000, 0).Format("2006-01-02 15:04:05"),
+			time.Unix(record.FiredAt/1000, 0).Local().Format("2006-01-02 15:04:05"),
 		)
 	} else if record.Status == "resolved" {
 		// 告警恢复消息
@@ -103,7 +103,7 @@ func (n *Notifier) buildMessage(agent *models.Agent, record *models.AlertRecord)
 			agent.IP,
 			record.AlertType,
 			record.ActualValue,
-			time.Unix(record.ResolvedAt/1000, 0).Format("2006-01-02 15:04:05"),
+			time.Unix(record.ResolvedAt/1000, 0).Local().Format("2006-01-02 15:04:05"),
 		)
 	}
 
@@ -320,9 +320,15 @@ func (n *Notifier) sendCustomWebhook(ctx context.Context, config map[string]inte
 			case "alert.actualValue":
 				v = fmt.Sprintf("%.2f", record.ActualValue)
 			case "alert.firedAt":
-				v = fmt.Sprintf("%d", record.FiredAt)
+				// 格式化的触发时间 (使用系统时区，Docker 中设置为 Asia/Shanghai)
+				v = time.Unix(record.FiredAt/1000, 0).Local().Format("2006-01-02 15:04:05")
 			case "alert.resolvedAt":
-				v = fmt.Sprintf("%d", record.ResolvedAt)
+				// 格式化的恢复时间 (使用系统时区，Docker 中设置为 Asia/Shanghai)
+				if record.ResolvedAt > 0 {
+					v = time.Unix(record.ResolvedAt/1000, 0).Local().Format("2006-01-02 15:04:05")
+				} else {
+					v = ""
+				}
 			default:
 				return w.Write([]byte("{{" + tag + "}}"))
 			}

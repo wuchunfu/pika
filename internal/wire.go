@@ -4,10 +4,13 @@
 package internal
 
 import (
+	"time"
+
 	"github.com/dushixiang/pika/internal/config"
 	"github.com/dushixiang/pika/internal/handler"
 	"github.com/dushixiang/pika/internal/repo"
 	"github.com/dushixiang/pika/internal/service"
+	"github.com/dushixiang/pika/internal/vmclient"
 	"github.com/dushixiang/pika/internal/websocket"
 	"github.com/google/wire"
 	"go.uber.org/zap"
@@ -17,6 +20,9 @@ import (
 // InitializeApp 初始化应用
 func InitializeApp(logger *zap.Logger, db *gorm.DB, cfg *config.AppConfig) (*AppComponents, error) {
 	wire.Build(
+		// VictoriaMetrics Client
+		provideVMClient,
+
 		service.NewAccountService,
 		service.NewAgentService,
 		service.NewUserService,
@@ -80,4 +86,33 @@ type AppComponents struct {
 	DDNSService     *service.DDNSService
 
 	WSManager *websocket.Manager
+	VMClient  *vmclient.VMClient
+}
+
+// provideVMClient 提供 VictoriaMetrics 客户端
+func provideVMClient(cfg *config.AppConfig, logger *zap.Logger) *vmclient.VMClient {
+	// 检查配置
+	if cfg.VictoriaMetrics == nil || !cfg.VictoriaMetrics.Enabled {
+		logger.Info("VictoriaMetrics is not enabled, using default configuration")
+		// 返回一个默认配置的客户端（用于本地开发）
+		return vmclient.NewVMClient("http://localhost:8428", 30*time.Second, 60*time.Second)
+	}
+
+	// 使用配置创建客户端
+	writeTimeout := time.Duration(cfg.VictoriaMetrics.WriteTimeout) * time.Second
+	if writeTimeout == 0 {
+		writeTimeout = 30 * time.Second
+	}
+
+	queryTimeout := time.Duration(cfg.VictoriaMetrics.QueryTimeout) * time.Second
+	if queryTimeout == 0 {
+		queryTimeout = 60 * time.Second
+	}
+
+	logger.Info("VictoriaMetrics client initialized",
+		zap.String("url", cfg.VictoriaMetrics.URL),
+		zap.Duration("writeTimeout", writeTimeout),
+		zap.Duration("queryTimeout", queryTimeout))
+
+	return vmclient.NewVMClient(cfg.VictoriaMetrics.URL, writeTimeout, queryTimeout)
 }

@@ -31,18 +31,14 @@ import {
     getAgentLatestMetrics,
     getAgentMetrics,
     type GetAgentMetricsRequest,
+    type GetAgentMetricsResponse,
+    type MetricSeries,
+    type MetricDataPoint,
     getAvailableNetworkInterfaces,
 } from '@/api/agent.ts';
 import {type TimeRangeOption} from '@/api/property.ts';
 import type {
     Agent,
-    AggregatedCPUMetric,
-    AggregatedDiskIOMetric,
-    AggregatedGPUMetric,
-    AggregatedMemoryMetric,
-    AggregatedNetworkConnectionMetric,
-    AggregatedNetworkMetric,
-    AggregatedTemperatureMetric,
     LatestMetrics
 } from '@/types';
 import dayjs from "dayjs";
@@ -246,15 +242,15 @@ const TimeRangeSelector = ({
 
 type MetricsTooltipProps = TooltipProps<number, string> & { unit?: string, label?: string, payload?: any[] };
 
+// 新的统一 Metrics 状态类型
 type MetricsState = {
-    cpu: AggregatedCPUMetric[];
-    memory: AggregatedMemoryMetric[];
-    network: AggregatedNetworkMetric[];
-    networkConnection: AggregatedNetworkConnectionMetric[];
-    // disk: AggregatedDiskMetric[];
-    diskIO: AggregatedDiskIOMetric[];
-    gpu: AggregatedGPUMetric[];
-    temperature: AggregatedTemperatureMetric[];
+    cpu: MetricSeries[];
+    memory: MetricSeries[];
+    network: MetricSeries[];
+    networkConnection: MetricSeries[];
+    diskIO: MetricSeries[];
+    gpu: MetricSeries[];
+    temperature: MetricSeries[];
 };
 
 const createEmptyMetricsState = (): MetricsState => ({
@@ -262,7 +258,6 @@ const createEmptyMetricsState = (): MetricsState => ({
     memory: [],
     network: [],
     networkConnection: [],
-    // disk: [],
     diskIO: [],
     gpu: [],
     temperature: [],
@@ -370,7 +365,8 @@ const useAggregatedMetrics = (agentId: string | undefined, range: string, interf
                 if (cancelled) return;
                 const nextState = createEmptyMetricsState();
                 metricRequestConfig.forEach(({key}, index) => {
-                    nextState[key] = responses[index].data.metrics || [];
+                    // 新的 API 返回 series 数组
+                    nextState[key] = responses[index].data.series || [];
                 });
                 setMetrics(nextState);
             } catch (error) {
@@ -517,31 +513,35 @@ const ServerDetail = () => {
     const {agent, latestMetrics, loading} = useAgentOverview(id);
     const metricsData = useAggregatedMetrics(id, timeRange, selectedInterface);
 
-    const cpuChartData = useMemo(
-        () =>
-            metricsData.cpu.map((item) => ({
-                time: new Date(item.timestamp).toLocaleTimeString('zh-CN', {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                }),
-                usage: Number(item.maxUsage.toFixed(2)),
-                timestamp: item.timestamp,
-            })),
-        [metricsData.cpu]
-    );
+    const cpuChartData = useMemo(() => {
+        // CPU 数据：取第一个系列（usage）
+        const cpuSeries = metricsData.cpu.find(s => s.name === 'usage');
+        if (!cpuSeries) return [];
 
-    const memoryChartData = useMemo(
-        () =>
-            metricsData.memory.map((item) => ({
-                time: new Date(item.timestamp).toLocaleTimeString('zh-CN', {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                }),
-                usage: Number(item.maxUsage.toFixed(2)),
-                timestamp: item.timestamp,
-            })),
-        [metricsData.memory]
-    );
+        return cpuSeries.data.map((point) => ({
+            time: new Date(point.timestamp).toLocaleTimeString('zh-CN', {
+                hour: '2-digit',
+                minute: '2-digit',
+            }),
+            usage: Number(point.value.toFixed(2)),
+            timestamp: point.timestamp,
+        }));
+    }, [metricsData.cpu]);
+
+    const memoryChartData = useMemo(() => {
+        // Memory 数据：取第一个系列（usage）
+        const memorySeries = metricsData.memory.find(s => s.name === 'usage');
+        if (!memorySeries) return [];
+
+        return memorySeries.data.map((point) => ({
+            time: new Date(point.timestamp).toLocaleTimeString('zh-CN', {
+                hour: '2-digit',
+                minute: '2-digit',
+            }),
+            usage: Number(point.value.toFixed(2)),
+            timestamp: point.timestamp,
+        }));
+    }, [metricsData.memory]);
 
     // 获取所有可用的网卡列表（从后端接口获取）
     const [availableInterfaces, setAvailableInterfaces] = useState<string[]>([]);
@@ -587,125 +587,166 @@ const ServerDetail = () => {
     const networkChartData = useMemo(() => {
         if (metricsData.network.length === 0) return [];
 
-        // 按时间戳分组数据
-        const grouped = metricsData.network.reduce((acc, item) => {
-            const time = new Date(item.timestamp).toLocaleTimeString('zh-CN', {
+        // 找到上行和下行系列
+        const uploadSeries = metricsData.network.find(s => s.name === 'upload');
+        const downloadSeries = metricsData.network.find(s => s.name === 'download');
+
+        if (!uploadSeries || !downloadSeries) return [];
+
+        // 按时间戳对齐数据
+        const timeMap = new Map<number, any>();
+
+        uploadSeries.data.forEach(point => {
+            const time = new Date(point.timestamp).toLocaleTimeString('zh-CN', {
                 hour: '2-digit',
                 minute: '2-digit',
             });
-
-            if (!acc[time]) {
-                acc[time] = {time, timestamp: item.timestamp};
-            }
-
-            // 后端已经根据 interface 参数返回了对应的数据
-            // 使用当前选中的 interface 作为标识（'all' 或具体网卡名）
-            const interfaceName = selectedInterface === 'all' ? 'total' : selectedInterface;
-            const uploadKey = `${interfaceName}_upload`;
-            const downloadKey = `${interfaceName}_download`;
-            // 转换为 MB/s
-            acc[time][uploadKey] = Number((item.maxSentRate / 1024 / 1024).toFixed(2));
-            acc[time][downloadKey] = Number((item.maxRecvRate / 1024 / 1024).toFixed(2));
-
-            return acc;
-        }, {} as Record<string, any>);
-
-        return Object.values(grouped);
-    }, [metricsData.network, selectedInterface]);
-
-    // Disk I/O 图表数据（汇总所有磁盘）
-    const diskIOChartData = useMemo(() => {
-        const aggregated: Record<string, { time: string; read: number; write: number; timestamp: number }> = {};
-
-        metricsData.diskIO.forEach((item) => {
-            const time = new Date(item.timestamp).toLocaleTimeString('zh-CN', {
-                hour: '2-digit',
-                minute: '2-digit',
+            timeMap.set(point.timestamp, {
+                time,
+                timestamp: point.timestamp,
+                upload: Number((point.value / 1024 / 1024).toFixed(2)), // 转换为 MB/s
             });
-
-            if (!aggregated[time]) {
-                aggregated[time] = {time, read: 0, write: 0, timestamp: item.timestamp};
-            }
-
-            // 转换为 MB/s
-            aggregated[time].read += item.maxReadRate / 1024 / 1024;
-            aggregated[time].write += item.maxWriteRate / 1024 / 1024;
         });
 
-        return Object.values(aggregated).map((item) => ({
-            ...item,
-            read: Number(item.read.toFixed(2)),
-            write: Number(item.write.toFixed(2)),
-        }));
+        downloadSeries.data.forEach(point => {
+            const existing = timeMap.get(point.timestamp);
+            if (existing) {
+                existing.download = Number((point.value / 1024 / 1024).toFixed(2));
+            }
+        });
+
+        return Array.from(timeMap.values());
+    }, [metricsData.network]);
+
+    // Disk I/O 图表数据
+    const diskIOChartData = useMemo(() => {
+        if (metricsData.diskIO.length === 0) return [];
+
+        // 找到读和写系列
+        const readSeries = metricsData.diskIO.find(s => s.name === 'read');
+        const writeSeries = metricsData.diskIO.find(s => s.name === 'write');
+
+        if (!readSeries || !writeSeries) return [];
+
+        // 按时间戳对齐数据
+        const timeMap = new Map<number, any>();
+
+        readSeries.data.forEach(point => {
+            const time = new Date(point.timestamp).toLocaleTimeString('zh-CN', {
+                hour: '2-digit',
+                minute: '2-digit',
+            });
+            timeMap.set(point.timestamp, {
+                time,
+                timestamp: point.timestamp,
+                read: Number((point.value / 1024 / 1024).toFixed(2)), // 转换为 MB/s
+            });
+        });
+
+        writeSeries.data.forEach(point => {
+            const existing = timeMap.get(point.timestamp);
+            if (existing) {
+                existing.write = Number((point.value / 1024 / 1024).toFixed(2));
+            }
+        });
+
+        return Array.from(timeMap.values());
     }, [metricsData.diskIO]);
 
-    // GPU 图表数据（汇总所有GPU的平均利用率）
+    // GPU 图表数据（暂不支持，需要后端返回温度系列）
     const gpuChartData = useMemo(() => {
-        const aggregated: Record<string, {
-            time: string;
-            utilization: number;
-            temperature: number;
-            count: number;
-            timestamp: number;
-        }> = {};
+        if (metricsData.gpu.length === 0) return [];
 
-        metricsData.gpu.forEach((item) => {
-            const time = new Date(item.timestamp).toLocaleTimeString('zh-CN', {
+        // 按时间戳聚合利用率和温度系列
+        const timeMap = new Map<number, any>();
+
+        const utilizationSeries = metricsData.gpu.find(s => s.name === 'utilization');
+        const temperatureSeries = metricsData.gpu.find(s => s.name === 'temperature');
+
+        // 添加利用率数据
+        utilizationSeries?.data.forEach(point => {
+            const time = new Date(point.timestamp).toLocaleTimeString('zh-CN', {
                 hour: '2-digit',
                 minute: '2-digit',
             });
-
-            if (!aggregated[time]) {
-                aggregated[time] = {time, utilization: 0, temperature: 0, count: 0, timestamp: item.timestamp};
-            }
-
-            aggregated[time].utilization += item.maxUtilization;
-            aggregated[time].temperature += item.maxTemperature;
-            aggregated[time].count += 1;
+            timeMap.set(point.timestamp, {
+                time,
+                timestamp: point.timestamp,
+                utilization: Number(point.value.toFixed(2)),
+            });
         });
 
-        return Object.values(aggregated).map((item) => ({
-            time: item.time,
-            utilization: Number((item.utilization / item.count).toFixed(2)),
-            temperature: Number((item.temperature / item.count).toFixed(2)),
-            timestamp: item.timestamp,
-        }));
+        // 添加温度数据
+        temperatureSeries?.data.forEach(point => {
+            const existing = timeMap.get(point.timestamp);
+            if (existing) {
+                existing.temperature = Number(point.value.toFixed(2));
+            }
+        });
+
+        return Array.from(timeMap.values());
     }, [metricsData.gpu]);
 
     // Temperature 图表数据（按类型分组显示各类型的温度）
     const temperatureChartData = useMemo(() => {
-        const aggregated: Record<string, any> = {};
+        if (metricsData.temperature.length === 0) return [];
 
-        metricsData.temperature.forEach((item) => {
-            const time = new Date(item.timestamp).toLocaleTimeString('zh-CN', {
-                hour: '2-digit',
-                minute: '2-digit',
+        // 按时间戳聚合所有温度系列
+        const timeMap = new Map<number, any>();
+
+        metricsData.temperature.forEach(series => {
+            const sensorName = series.name; // 使用系列名称作为传感器标识
+            series.data.forEach(point => {
+                const time = new Date(point.timestamp).toLocaleTimeString('zh-CN', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                });
+
+                if (!timeMap.has(point.timestamp)) {
+                    timeMap.set(point.timestamp, {time, timestamp: point.timestamp});
+                }
+
+                const existing = timeMap.get(point.timestamp)!;
+                existing[sensorName] = Number(point.value.toFixed(2));
             });
-
-            if (!aggregated[time]) {
-                aggregated[time] = {time, timestamp: item.timestamp};
-            }
-
-            // 使用 sensorLabel 作为数据键（类型名称，如 CPU、GPU 等）
-            const label = item.sensorLabel || 'Unknown';
-            // 对于同一时间点的同一类型，取最大温度
-            if (!aggregated[time][label] || item.maxTemperature > aggregated[time][label]) {
-                aggregated[time][label] = Number(item.maxTemperature.toFixed(2));
-            }
         });
 
-        return Object.values(aggregated);
+        return Array.from(timeMap.values());
     }, [metricsData.temperature]);
 
     // 提取所有唯一的温度类型（用于图表 Line 渲染和下拉选择器）
     const temperatureTypes = useMemo(() => {
-        const types = new Set<string>();
-        metricsData.temperature.forEach((item) => {
-            const label = item.sensorLabel || 'Unknown';
-            types.add(label);
-        });
-        return Array.from(types).sort();
+        return metricsData.temperature.map(s => s.name).sort();
     }, [metricsData.temperature]);
+
+    // 网络连接图表数据
+    const networkConnectionChartData = useMemo(() => {
+        if (metricsData.networkConnection.length === 0) return [];
+
+        // 按时间戳聚合所有连接状态系列
+        const timeMap = new Map<number, any>();
+
+        metricsData.networkConnection.forEach(series => {
+            const stateName = series.name; // established, time_wait, close_wait, listen
+            series.data.forEach(point => {
+                const time = new Date(point.timestamp).toLocaleTimeString('zh-CN', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                });
+
+                if (!timeMap.has(point.timestamp)) {
+                    timeMap.set(point.timestamp, {time, timestamp: point.timestamp});
+                }
+
+                const existing = timeMap.get(point.timestamp)!;
+                // 转换为驼峰命名以匹配图表的 dataKey
+                const camelCaseName = stateName.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+                existing[camelCaseName] = Number(point.value.toFixed(0));
+            });
+        });
+
+        return Array.from(timeMap.values());
+    }, [metricsData.networkConnection]);
 
     // 根据选中的类型过滤温度数据
     const filteredTemperatureTypes = useMemo(() => {
@@ -1189,30 +1230,18 @@ const ServerDetail = () => {
                                     <ResponsiveContainer width="100%" height={220}>
                                         <AreaChart data={networkChartData}>
                                             <defs>
-                                                {(() => {
-                                                    const interfaceName = selectedInterface === 'all' ? 'total' : selectedInterface;
-                                                    const colorConfig = INTERFACE_COLORS[0];
-                                                    const uploadKey = `${interfaceName}_upload`;
-                                                    const downloadKey = `${interfaceName}_download`;
-                                                    return (
-                                                        <>
-                                                            <linearGradient id={`color-${uploadKey}`} x1="0" y1="0"
-                                                                            x2="0" y2="1">
-                                                                <stop offset="5%" stopColor={colorConfig.upload}
-                                                                      stopOpacity={0.3}/>
-                                                                <stop offset="95%" stopColor={colorConfig.upload}
-                                                                      stopOpacity={0}/>
-                                                            </linearGradient>
-                                                            <linearGradient id={`color-${downloadKey}`} x1="0" y1="0"
-                                                                            x2="0" y2="1">
-                                                                <stop offset="5%" stopColor={colorConfig.download}
-                                                                      stopOpacity={0.3}/>
-                                                                <stop offset="95%" stopColor={colorConfig.download}
-                                                                      stopOpacity={0}/>
-                                                            </linearGradient>
-                                                        </>
-                                                    );
-                                                })()}
+                                                <linearGradient id="color-upload" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="5%" stopColor={INTERFACE_COLORS[0].upload}
+                                                          stopOpacity={0.3}/>
+                                                    <stop offset="95%" stopColor={INTERFACE_COLORS[0].upload}
+                                                          stopOpacity={0}/>
+                                                </linearGradient>
+                                                <linearGradient id="color-download" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="5%" stopColor={INTERFACE_COLORS[0].download}
+                                                          stopOpacity={0.3}/>
+                                                    <stop offset="95%" stopColor={INTERFACE_COLORS[0].download}
+                                                          stopOpacity={0}/>
+                                                </linearGradient>
                                             </defs>
                                             <CartesianGrid stroke="currentColor" strokeDasharray="4 4"
                                                            className="stroke-slate-200 dark:stroke-slate-600"/>
@@ -1230,38 +1259,25 @@ const ServerDetail = () => {
                                             />
                                             <Tooltip content={<CustomTooltip unit=" MB/s"/>}/>
                                             <Legend/>
-                                            {/* 渲染当前选中网卡的上行和下行区域 */}
-                                            {(() => {
-                                                // 根据 selectedInterface 确定显示的网卡名称和数据 key
-                                                const interfaceName = selectedInterface === 'all' ? 'total' : selectedInterface;
-                                                const colorConfig = INTERFACE_COLORS[0]; // 使用第一组颜色
-                                                const uploadKey = `${interfaceName}_upload`;
-                                                const downloadKey = `${interfaceName}_download`;
-                                                const displayName = selectedInterface === 'all' ? '总计' : selectedInterface;
-
-                                                return (
-                                                    <>
-                                                        <Area
-                                                            type="monotone"
-                                                            dataKey={uploadKey}
-                                                            name={`${displayName} 上行`}
-                                                            stroke={colorConfig.upload}
-                                                            strokeWidth={2}
-                                                            fill={`url(#color-${uploadKey})`}
-                                                            activeDot={{r: 3}}
-                                                        />
-                                                        <Area
-                                                            type="monotone"
-                                                            dataKey={downloadKey}
-                                                            name={`${displayName} 下行`}
-                                                            stroke={colorConfig.download}
-                                                            strokeWidth={2}
-                                                            fill={`url(#color-${downloadKey})`}
-                                                            activeDot={{r: 3}}
-                                                        />
-                                                    </>
-                                                );
-                                            })()}
+                                            {/* 渲染上行和下行区域 */}
+                                            <Area
+                                                type="monotone"
+                                                dataKey="upload"
+                                                name="上行"
+                                                stroke={INTERFACE_COLORS[0].upload}
+                                                strokeWidth={2}
+                                                fill="url(#color-upload)"
+                                                activeDot={{r: 3}}
+                                            />
+                                            <Area
+                                                type="monotone"
+                                                dataKey="download"
+                                                name="下行"
+                                                stroke={INTERFACE_COLORS[0].download}
+                                                strokeWidth={2}
+                                                fill="url(#color-download)"
+                                                activeDot={{r: 3}}
+                                            />
                                         </AreaChart>
                                     </ResponsiveContainer>
                                 ) : (
@@ -1339,19 +1355,9 @@ const ServerDetail = () => {
                                     </span>
                                     网络连接统计
                                 </h3>
-                                {metricsData.networkConnection.length > 0 ? (
+                                {networkConnectionChartData.length > 0 ? (
                                     <ResponsiveContainer width="100%" height={220}>
-                                        <LineChart data={metricsData.networkConnection.map(item => ({
-                                            time: new Date(item.timestamp).toLocaleTimeString('zh-CN', {
-                                                hour: '2-digit',
-                                                minute: '2-digit',
-                                            }),
-                                            established: item.maxEstablished,
-                                            timeWait: item.maxTimeWait,
-                                            closeWait: item.maxCloseWait,
-                                            listen: item.maxListen,
-                                            timestamp: item.timestamp,
-                                        }))}>
+                                        <LineChart data={networkConnectionChartData}>
                                             <CartesianGrid stroke="currentColor" strokeDasharray="4 4"
                                                            className="stroke-slate-200 dark:stroke-slate-600"/>
                                             <XAxis

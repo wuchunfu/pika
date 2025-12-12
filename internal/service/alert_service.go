@@ -407,7 +407,7 @@ func (s *AlertService) checkCertificateAlerts(ctx context.Context, config *model
 }
 
 // checkCertAlert 检查并触发证书告警
-func (s *AlertService) checkCertAlert(ctx context.Context, config *models.AlertConfig, agent *models.Agent, monitor *models.MonitorMetric, certDaysLeft float64, now int64) {
+func (s *AlertService) checkCertAlert(ctx context.Context, config *models.AlertConfig, agent *models.Agent, monitor *repo.MonitorMetric, certDaysLeft float64, now int64) {
 	stateKey := fmt.Sprintf("%s:global:cert:%s", agent.ID, monitor.MonitorId)
 
 	// 从数据库加载状态
@@ -479,7 +479,7 @@ func (s *AlertService) checkCertAlert(ctx context.Context, config *models.AlertC
 }
 
 // resolveCertAlert 恢复证书告警
-func (s *AlertService) resolveCertAlert(ctx context.Context, config *models.AlertConfig, agent *models.Agent, monitor *models.MonitorMetric, certDaysLeft float64) {
+func (s *AlertService) resolveCertAlert(ctx context.Context, config *models.AlertConfig, agent *models.Agent, monitor *repo.MonitorMetric, certDaysLeft float64) {
 	stateKey := fmt.Sprintf("%s:global:cert:%s", agent.ID, monitor.MonitorId)
 
 	state, err := s.AlertStateRepo.GetAlertState(ctx, stateKey)
@@ -603,7 +603,7 @@ func (s *AlertService) checkServiceDownAlerts(ctx context.Context, config *model
 }
 
 // fireServiceDownAlert 触发服务下线告警
-func (s *AlertService) fireServiceDownAlert(ctx context.Context, config *models.AlertConfig, agent *models.Agent, monitor *models.MonitorMetric, state *models.AlertState, now int64) {
+func (s *AlertService) fireServiceDownAlert(ctx context.Context, config *models.AlertConfig, agent *models.Agent, monitor *repo.MonitorMetric, state *models.AlertState, now int64) {
 	s.logger.Info("触发服务下线告警",
 		zap.String("agentId", agent.ID),
 		zap.String("monitorId", monitor.MonitorId),
@@ -641,7 +641,7 @@ func (s *AlertService) fireServiceDownAlert(ctx context.Context, config *models.
 }
 
 // resolveServiceDownAlert 恢复服务下线告警
-func (s *AlertService) resolveServiceDownAlert(ctx context.Context, config *models.AlertConfig, agent *models.Agent, monitor *models.MonitorMetric, state *models.AlertState) {
+func (s *AlertService) resolveServiceDownAlert(ctx context.Context, config *models.AlertConfig, agent *models.Agent, monitor *repo.MonitorMetric, state *models.AlertState) {
 	s.logger.Info("服务下线告警恢复",
 		zap.String("agentId", agent.ID),
 		zap.String("monitorId", monitor.MonitorId),

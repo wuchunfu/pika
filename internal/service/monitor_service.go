@@ -26,6 +26,7 @@ type MonitorService struct {
 	*orz.Service
 	agentRepo        *repo.AgentRepo
 	metricRepo       *repo.MetricRepo
+	metricService    *MetricService
 	monitorStatsRepo *repo.MonitorStatsRepo
 	wsManager        *ws.Manager
 
@@ -45,13 +46,14 @@ type MonitorScheduler interface {
 	RemoveTask(monitorID string)
 }
 
-func NewMonitorService(logger *zap.Logger, db *gorm.DB, wsManager *ws.Manager) *MonitorService {
+func NewMonitorService(logger *zap.Logger, db *gorm.DB, metricService *MetricService, wsManager *ws.Manager) *MonitorService {
 	return &MonitorService{
 		logger:           logger,
 		Service:          orz.NewService(db),
 		MonitorRepo:      repo.NewMonitorRepo(db),
 		agentRepo:        repo.NewAgentRepo(db),
 		metricRepo:       repo.NewMetricRepo(db),
+		metricService:    metricService,
 		monitorStatsRepo: repo.NewMonitorStatsRepo(db),
 		wsManager:        wsManager,
 
@@ -233,8 +235,8 @@ func (s *MonitorService) DeleteMonitor(ctx context.Context, id string) error {
 			return err
 		}
 
-		// 删除监控指标数据
-		if err := s.metricRepo.DeleteMonitorMetrics(ctx, id); err != nil {
+		// 删除监控指标数据（从 VictoriaMetrics）
+		if err := s.metricService.DeleteMonitorMetrics(ctx, id); err != nil {
 			s.logger.Error("删除监控指标数据失败", zap.String("monitorId", id), zap.Error(err))
 			return err
 		}

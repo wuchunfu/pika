@@ -120,22 +120,6 @@ func (s *PropertyService) GetSystemConfig(ctx context.Context) (*models.SystemCo
 	return &systemConfig, nil
 }
 
-// GetMetricsConfig 获取指标配置
-func (s *PropertyService) GetMetricsConfig(ctx context.Context) models.MetricsConfig {
-	var config models.MetricsConfig
-	err := s.GetValue(ctx, PropertyIDMetricsConfig, &config)
-	if err != nil {
-		// 返回默认配置
-		return models.MetricsConfig{}
-	}
-	return config
-}
-
-// SetMetricsConfig 设置指标配置
-func (s *PropertyService) SetMetricsConfig(ctx context.Context, config models.MetricsConfig) error {
-	return s.Set(ctx, PropertyIDMetricsConfig, "指标数据配置", config)
-}
-
 // GetAlertConfig 获取告警配置
 func (s *PropertyService) GetAlertConfig(ctx context.Context) (*models.AlertConfig, error) {
 	var config models.AlertConfig
@@ -251,13 +235,6 @@ func (s *PropertyService) InitializeDefaultConfigs(ctx context.Context) error {
 			ID:    PropertyIDNotificationChannels,
 			Name:  "通知渠道配置",
 			Value: []models.NotificationChannelConfig{},
-		},
-		{
-			ID:   PropertyIDMetricsConfig,
-			Name: "指标数据配置",
-			Value: models.MetricsConfig{
-				RetentionHours: 168, // 默认7天
-			},
 		},
 		{
 			ID:   PropertyIDAlertConfig,

@@ -13,14 +13,23 @@ export interface GetAgentMetricsRequest {
     interface?: string; // 网卡过滤参数（仅对 network 类型有效）
 }
 
+// 新的统一数据格式
+export interface MetricDataPoint {
+    timestamp: number;
+    value: number;
+}
+
+export interface MetricSeries {
+    name: string;
+    labels?: Record<string, string>;
+    data: MetricDataPoint[];
+}
+
 export interface GetAgentMetricsResponse {
     agentId: string;
     type: string;
     range: string;
-    start: number;
-    end: number;
-    interface?: string;
-    metrics: any[];
+    series: MetricSeries[];
 }
 
 // 管理员接口 - 获取所有探针（需要认证）

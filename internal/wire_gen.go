@@ -11,9 +11,11 @@ import (
 	"github.com/dushixiang/pika/internal/handler"
 	"github.com/dushixiang/pika/internal/repo"
 	"github.com/dushixiang/pika/internal/service"
+	"github.com/dushixiang/pika/internal/vmclient"
 	"github.com/dushixiang/pika/internal/websocket"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
+	"time"
 )
 
 // Injectors from wire.go:
@@ -28,14 +30,15 @@ func InitializeApp(logger *zap.Logger, db *gorm.DB, cfg *config.AppConfig) (*App
 	apiKeyService := service.NewApiKeyService(logger, db)
 	propertyService := service.NewPropertyService(logger, db)
 	trafficService := service.NewTrafficService(logger, db)
-	metricService := service.NewMetricService(logger, db, propertyService, trafficService)
+	vmClient := provideVMClient(cfg, logger)
+	metricService := service.NewMetricService(logger, db, propertyService, trafficService, vmClient)
 	geoIPService, err := service.NewGeoIPService(logger, cfg)
 	if err != nil {
 		return nil, err
 	}
 	agentService := service.NewAgentService(logger, db, apiKeyService, metricService, geoIPService)
 	manager := websocket.NewManager(logger)
-	monitorService := service.NewMonitorService(logger, db, manager)
+	monitorService := service.NewMonitorService(logger, db, metricService, manager)
 	tamperRepo := repo.NewTamperRepo(db)
 	tamperService := service.NewTamperService(logger, tamperRepo, manager)
 	ddnsConfigRepo := repo.NewDDNSConfigRepo(db)
@@ -70,6 +73,7 @@ func InitializeApp(logger *zap.Logger, db *gorm.DB, cfg *config.AppConfig) (*App
 		TamperService:      tamperService,
 		DDNSService:        ddnsService,
 		WSManager:          manager,
+		VMClient:           vmClient,
 	}
 	return appComponents, nil
 }
@@ -98,4 +102,29 @@ type AppComponents struct {
 	DDNSService     *service.DDNSService
 
 	WSManager *websocket.Manager
+	VMClient  *vmclient.VMClient
+}
+
+// provideVMClient 提供 VictoriaMetrics 客户端
+func provideVMClient(cfg *config.AppConfig, logger *zap.Logger) *vmclient.VMClient {
+
+	if cfg.VictoriaMetrics == nil || !cfg.VictoriaMetrics.Enabled {
+		logger.Info("VictoriaMetrics is not enabled, using default configuration")
+
+		return vmclient.NewVMClient("http://localhost:8428", 30*time.Second, 60*time.Second)
+	}
+
+	writeTimeout := time.Duration(cfg.VictoriaMetrics.WriteTimeout) * time.Second
+	if writeTimeout == 0 {
+		writeTimeout = 30 * time.Second
+	}
+
+	queryTimeout := time.Duration(cfg.VictoriaMetrics.QueryTimeout) * time.Second
+	if queryTimeout == 0 {
+		queryTimeout = 60 * time.Second
+	}
+
+	logger.Info("VictoriaMetrics client initialized", zap.String("url", cfg.VictoriaMetrics.URL), zap.Duration("writeTimeout", writeTimeout), zap.Duration("queryTimeout", queryTimeout))
+
+	return vmclient.NewVMClient(cfg.VictoriaMetrics.URL, writeTimeout, queryTimeout)
 }

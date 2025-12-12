@@ -81,12 +81,6 @@ func setup(app *orz.App) error {
 	// 启动WebSocket管理器
 	go components.WSManager.Run(ctx)
 
-	// 启动数据清理任务
-	go components.MetricService.StartCleanupTask(ctx)
-
-	// 启动聚合下采样任务
-	go components.MetricService.StartAggregationTask(ctx)
-
 	// 启动指标监控任务（用于告警检测）
 	go startMetricsMonitoring(ctx, components, app.Logger())
 
@@ -305,20 +299,11 @@ func autoMigrate(database *gorm.DB) error {
 	return database.AutoMigrate(
 		&models.Agent{},
 		&models.ApiKey{},
-		&models.CPUMetric{},
-		&models.MemoryMetric{},
-		&models.DiskMetric{},
-		&models.NetworkMetric{},
-		&models.NetworkConnectionMetric{},
-		&models.DiskIOMetric{},
-		&models.GPUMetric{},
-		&models.TemperatureMetric{},
-		&models.HostMetric{},
+		&models.HostMetric{}, // 保留主机静态信息表
 		&models.AuditResult{},
 		&models.Property{},
 		&models.AlertRecord{},
 		&models.AlertState{},
-		&models.MonitorMetric{},
 		&models.MonitorTask{},
 		&models.MonitorStats{},
 		&models.TamperProtectConfig{},
@@ -326,17 +311,7 @@ func autoMigrate(database *gorm.DB) error {
 		&models.TamperAlert{},
 		&models.DDNSConfig{},
 		&models.DDNSRecord{},
-		// 聚合表
-		&models.AggregatedCPUMetricModel{},
-		&models.AggregatedMemoryMetricModel{},
-		&models.AggregatedDiskMetricModel{},
-		&models.AggregatedNetworkMetricModel{},
-		&models.AggregatedNetworkConnectionMetricModel{},
-		&models.AggregatedDiskIOMetricModel{},
-		&models.AggregatedGPUMetricModel{},
-		&models.AggregatedTemperatureMetricModel{},
-		&models.AggregatedMonitorMetricModel{},
-		&models.AggregationProgress{},
+		// 指标数据已迁移到 VictoriaMetrics
 	)
 }
 

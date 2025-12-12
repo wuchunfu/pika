@@ -18,41 +18,6 @@ func NewMetricRepo(db *gorm.DB) *MetricRepo {
 	}
 }
 
-// SaveCPUMetric 保存CPU指标
-func (r *MetricRepo) SaveCPUMetric(ctx context.Context, metric *models.CPUMetric) error {
-	return r.db.WithContext(ctx).Create(metric).Error
-}
-
-// SaveMemoryMetric 保存内存指标
-func (r *MetricRepo) SaveMemoryMetric(ctx context.Context, metric *models.MemoryMetric) error {
-	return r.db.WithContext(ctx).Create(metric).Error
-}
-
-// SaveDiskMetric 保存磁盘指标
-func (r *MetricRepo) SaveDiskMetric(ctx context.Context, metric *models.DiskMetric) error {
-	return r.db.WithContext(ctx).Create(metric).Error
-}
-
-// SaveNetworkMetric 保存网络指标
-func (r *MetricRepo) SaveNetworkMetric(ctx context.Context, metric *models.NetworkMetric) error {
-	return r.db.WithContext(ctx).Create(metric).Error
-}
-
-// SaveDiskIOMetric 保存磁盘IO指标
-func (r *MetricRepo) SaveDiskIOMetric(ctx context.Context, metric *models.DiskIOMetric) error {
-	return r.db.WithContext(ctx).Create(metric).Error
-}
-
-// SaveGPUMetric 保存GPU指标
-func (r *MetricRepo) SaveGPUMetric(ctx context.Context, metric *models.GPUMetric) error {
-	return r.db.WithContext(ctx).Create(metric).Error
-}
-
-// SaveTemperatureMetric 保存温度指标
-func (r *MetricRepo) SaveTemperatureMetric(ctx context.Context, metric *models.TemperatureMetric) error {
-	return r.db.WithContext(ctx).Create(metric).Error
-}
-
 // SaveHostMetric 保存主机信息指标（按 agent 覆盖，避免先删后插的空窗）
 func (r *MetricRepo) SaveHostMetric(ctx context.Context, metric *models.HostMetric) error {
 	return r.db.WithContext(ctx).
@@ -63,164 +28,46 @@ func (r *MetricRepo) SaveHostMetric(ctx context.Context, metric *models.HostMetr
 		Create(metric).Error
 }
 
-// SaveNetworkConnectionMetric 保存网络连接统计指标
-func (r *MetricRepo) SaveNetworkConnectionMetric(ctx context.Context, metric *models.NetworkConnectionMetric) error {
-	return r.db.WithContext(ctx).Create(metric).Error
+// GetAvailableNetworkInterfaces 获取探针的可用网卡列表
+// TODO: 需要改为从 VictoriaMetrics 查询 labels
+func (r *MetricRepo) GetAvailableNetworkInterfaces(ctx context.Context, agentID string) ([]string, error) {
+	// 暂时返回空列表，后续改为从 VictoriaMetrics 查询
+	// 使用 GET /api/v1/label/interface/values?match[]=pika_network_sent_bytes_rate{agent_id="xxx"}
+	return []string{}, nil
 }
 
-// AggregatedNetworkConnectionMetric 网络连接统计聚合指标
-type AggregatedNetworkConnectionMetric struct {
-	Timestamp      int64  `json:"timestamp"`
-	MaxEstablished uint32 `json:"maxEstablished"` // 最大已建立连接数
-	MaxSynSent     uint32 `json:"maxSynSent"`     // 最大 SYN_SENT 连接数
-	MaxSynRecv     uint32 `json:"maxSynRecv"`     // 最大 SYN_RECV 连接数
-	MaxFinWait1    uint32 `json:"maxFinWait1"`    // 最大 FIN_WAIT1 连接数
-	MaxFinWait2    uint32 `json:"maxFinWait2"`    // 最大 FIN_WAIT2 连接数
-	MaxTimeWait    uint32 `json:"maxTimeWait"`    // 最大 TIME_WAIT 连接数
-	MaxClose       uint32 `json:"maxClose"`       // 最大 CLOSE 连接数
-	MaxCloseWait   uint32 `json:"maxCloseWait"`   // 最大 CLOSE_WAIT 连接数
-	MaxLastAck     uint32 `json:"maxLastAck"`     // 最大 LAST_ACK 连接数
-	MaxListen      uint32 `json:"maxListen"`      // 最大 LISTEN 连接数
-	MaxClosing     uint32 `json:"maxClosing"`     // 最大 CLOSING 连接数
-	MaxTotal       uint32 `json:"maxTotal"`       // 最大总连接数
-}
-
-// GetNetworkConnectionMetrics 获取聚合后的网络连接统计指标
-func (r *MetricRepo) GetNetworkConnectionMetrics(ctx context.Context, agentID string, start, end int64, interval int) ([]AggregatedNetworkConnectionMetric, error) {
-	var metrics []AggregatedNetworkConnectionMetric
-
-	query := `
-		SELECT
-			CAST(FLOOR(timestamp / ?) * ? AS BIGINT) as timestamp,
-			MAX(established) as max_established,
-			MAX(syn_sent) as max_syn_sent,
-			MAX(syn_recv) as max_syn_recv,
-			MAX(fin_wait1) as max_fin_wait1,
-			MAX(fin_wait2) as max_fin_wait2,
-			MAX(time_wait) as max_time_wait,
-			MAX(close) as max_close,
-			MAX(close_wait) as max_close_wait,
-			MAX(last_ack) as max_last_ack,
-			MAX(listen) as max_listen,
-			MAX(closing) as max_closing,
-			MAX(total) as max_total
-		FROM network_connection_metrics
-		WHERE agent_id = ? AND timestamp >= ? AND timestamp <= ?
-		GROUP BY 1
-		ORDER BY timestamp ASC
-	`
-
-	intervalMs := int64(interval * 1000)
-	err := r.db.WithContext(ctx).
-		Raw(query, intervalMs, intervalMs, agentID, start, end).
-		Scan(&metrics).Error
-
-	return metrics, err
-}
-
-// DeleteOldMetrics 删除指定时间之前的所有指标数据
-func (r *MetricRepo) DeleteOldMetrics(ctx context.Context, beforeTimestamp int64) error {
-	// 批量大小
-	batchSize := 1000
-
-	// 定义要清理的表（Host 信息只保留最新的，不需要清理）
-	tables := []interface{}{
-		&models.CPUMetric{},
-		&models.MemoryMetric{},
-		&models.DiskMetric{},
-		&models.NetworkMetric{},
-		&models.NetworkConnectionMetric{},
-		&models.DiskIOMetric{},
-		&models.GPUMetric{},
-		&models.TemperatureMetric{},
-		&models.MonitorMetric{},
+// DeleteAgentMetrics 删除指定探针的所有指标数据
+// TODO: 需要改为调用 VictoriaMetrics 的 DELETE API
+func (r *MetricRepo) DeleteAgentMetrics(ctx context.Context, agentID string) error {
+	// 1. 删除 PostgreSQL 中的主机信息
+	if err := r.db.WithContext(ctx).Where("agent_id = ?", agentID).Delete(&models.HostMetric{}).Error; err != nil {
+		return err
 	}
 
-	// 对每个表进行分批删除
-	for _, table := range tables {
-		for {
-			// 分批删除，避免长事务
-			result := r.db.WithContext(ctx).
-				Where("timestamp < ?", beforeTimestamp).
-				Limit(batchSize).
-				Delete(table)
-
-			if result.Error != nil {
-				return result.Error
-			}
-
-			// 如果删除的行数少于批量大小，说明已经删除完毕
-			if result.RowsAffected < int64(batchSize) {
-				break
-			}
-		}
-	}
+	// 2. TODO: 调用 VictoriaMetrics 删除时间序列数据
+	// DELETE /api/v1/admin/tsdb/delete_series?match[]=pika_*{agent_id="xxx"}
 
 	return nil
 }
 
-// AggregatedCPUMetric CPU聚合指标（使用最大值）
+// 以下是兼容性数据结构定义，用于返回查询结果
+// TODO: 后续从 VictoriaMetrics 查询时使用这些结构
+
+// AggregatedCPUMetric CPU聚合指标
 type AggregatedCPUMetric struct {
 	Timestamp    int64   `json:"timestamp"`
 	MaxUsage     float64 `json:"maxUsage"`
 	LogicalCores int     `json:"logicalCores"`
 }
 
-// GetCPUMetrics 获取聚合后的CPU指标（取最大值）
-// interval: 聚合间隔，单位秒（如：60表示1分钟）
-func (r *MetricRepo) GetCPUMetrics(ctx context.Context, agentID string, start, end int64, interval int) ([]AggregatedCPUMetric, error) {
-	var metrics []AggregatedCPUMetric
-
-	query := `
-		SELECT
-			CAST(FLOOR(timestamp / ?) * ? AS BIGINT) as timestamp,
-			MAX(usage_percent) as max_usage,
-			MAX(logical_cores) as logical_cores
-		FROM cpu_metrics
-		WHERE agent_id = ? AND timestamp >= ? AND timestamp <= ?
-		GROUP BY 1
-		ORDER BY timestamp ASC
-	`
-
-	intervalMs := int64(interval * 1000)
-	err := r.db.WithContext(ctx).
-		Raw(query, intervalMs, intervalMs, agentID, start, end).
-		Scan(&metrics).Error
-
-	return metrics, err
-}
-
-// AggregatedMemoryMetric 内存聚合指标（使用最大值）
+// AggregatedMemoryMetric 内存聚合指标
 type AggregatedMemoryMetric struct {
 	Timestamp int64   `json:"timestamp"`
 	MaxUsage  float64 `json:"maxUsage"`
 	Total     uint64  `json:"total"`
 }
 
-// GetMemoryMetrics 获取聚合后的内存指标（取最大值）
-func (r *MetricRepo) GetMemoryMetrics(ctx context.Context, agentID string, start, end int64, interval int) ([]AggregatedMemoryMetric, error) {
-	var metrics []AggregatedMemoryMetric
-
-	query := `
-		SELECT
-			CAST(FLOOR(timestamp / ?) * ? AS BIGINT) as timestamp,
-			MAX(usage_percent) as max_usage,
-			MAX(total) as total
-		FROM memory_metrics
-		WHERE agent_id = ? AND timestamp >= ? AND timestamp <= ?
-		GROUP BY 1
-		ORDER BY timestamp ASC
-	`
-
-	intervalMs := int64(interval * 1000)
-	err := r.db.WithContext(ctx).
-		Raw(query, intervalMs, intervalMs, agentID, start, end).
-		Scan(&metrics).Error
-
-	return metrics, err
-}
-
-// AggregatedDiskMetric 磁盘聚合指标（使用最大值）
+// AggregatedDiskMetric 磁盘聚合指标
 type AggregatedDiskMetric struct {
 	Timestamp  int64   `json:"timestamp"`
 	MountPoint string  `json:"mountPoint"`
@@ -228,32 +75,7 @@ type AggregatedDiskMetric struct {
 	Total      uint64  `json:"total"`
 }
 
-// GetDiskMetrics 获取聚合后的磁盘指标（返回预聚合的总和数据）
-// 直接查询 mount_point=” 的预聚合记录
-func (r *MetricRepo) GetDiskMetrics(ctx context.Context, agentID string, start, end int64, interval int) ([]AggregatedDiskMetric, error) {
-	var metrics []AggregatedDiskMetric
-
-	query := `
-		SELECT
-			CAST(FLOOR(timestamp / ?) * ? AS BIGINT) as timestamp,
-			mount_point,
-			MAX(usage_percent) as max_usage,
-			MAX(total) as total
-		FROM disk_metrics
-		WHERE agent_id = ? AND timestamp >= ? AND timestamp <= ? AND mount_point = ?
-		GROUP BY 1, mount_point
-		ORDER BY timestamp ASC
-	`
-
-	intervalMs := int64(interval * 1000)
-	err := r.db.WithContext(ctx).
-		Raw(query, intervalMs, intervalMs, agentID, start, end, ""). // 空字符串查询总和记录
-		Scan(&metrics).Error
-
-	return metrics, err
-}
-
-// AggregatedNetworkMetric 网络聚合指标（按网卡分组）
+// AggregatedNetworkMetric 网络聚合指标
 type AggregatedNetworkMetric struct {
 	Timestamp   int64   `json:"timestamp"`
 	Interface   string  `json:"interface"`
@@ -261,169 +83,34 @@ type AggregatedNetworkMetric struct {
 	MaxRecvRate float64 `json:"maxRecvRate"`
 }
 
-// AggregatedNetworkMetricByInterface 按网卡接口分组的网络聚合指标
-type AggregatedNetworkMetricByInterface struct {
-	Timestamp   int64   `json:"timestamp"`
-	Interface   string  `json:"interface"`
-	MaxSentRate float64 `json:"maxSentRate"`
-	MaxRecvRate float64 `json:"maxRecvRate"`
+// AggregatedNetworkConnectionMetric 网络连接统计聚合指标
+type AggregatedNetworkConnectionMetric struct {
+	Timestamp      int64  `json:"timestamp"`
+	MaxEstablished uint32 `json:"maxEstablished"`
+	MaxSynSent     uint32 `json:"maxSynSent"`
+	MaxSynRecv     uint32 `json:"maxSynRecv"`
+	MaxFinWait1    uint32 `json:"maxFinWait1"`
+	MaxFinWait2    uint32 `json:"maxFinWait2"`
+	MaxTimeWait    uint32 `json:"maxTimeWait"`
+	MaxClose       uint32 `json:"maxClose"`
+	MaxCloseWait   uint32 `json:"maxCloseWait"`
+	MaxLastAck     uint32 `json:"maxLastAck"`
+	MaxListen      uint32 `json:"maxListen"`
+	MaxClosing     uint32 `json:"maxClosing"`
+	MaxTotal       uint32 `json:"maxTotal"`
 }
 
-// GetNetworkMetrics 获取聚合后的网络指标（可选按网卡接口过滤）
-// 不指定网卡时查询 interface=” 的预聚合数据，指定网卡时只返回该网卡的数据
-func (r *MetricRepo) GetNetworkMetrics(ctx context.Context, agentID string, start, end int64, interval int, interfaceName string) ([]AggregatedNetworkMetric, error) {
-	var metrics []AggregatedNetworkMetric
-
-	intervalMs := int64(interval * 1000)
-
-	// 不管是否指定网卡，查询逻辑都一样：直接查询对应 interface 的数据
-	// interfaceName 为空字符串时，会查询到预先保存的总和数据
-	query := `
-		SELECT
-			CAST(FLOOR(timestamp / ?) * ? AS BIGINT) as timestamp,
-			interface,
-			MAX(bytes_sent_rate) as max_sent_rate,
-			MAX(bytes_recv_rate) as max_recv_rate
-		FROM network_metrics
-		WHERE agent_id = ? AND timestamp >= ? AND timestamp <= ? AND interface = ?
-		GROUP BY 1, interface
-		ORDER BY timestamp ASC
-	`
-
-	err := r.db.WithContext(ctx).
-		Raw(query, intervalMs, intervalMs, agentID, start, end, interfaceName).
-		Scan(&metrics).Error
-
-	return metrics, err
-}
-
-// SaveMonitorMetric 保存监控指标
-func (r *MetricRepo) SaveMonitorMetric(ctx context.Context, metric *models.MonitorMetric) error {
-	return r.db.WithContext(ctx).Create(metric).Error
-}
-
-// GetMonitorMetrics 获取监控指标列表
-func (r *MetricRepo) GetMonitorMetrics(ctx context.Context, agentID, monitorID string, start, end int64) ([]models.MonitorMetric, error) {
-	var metrics []models.MonitorMetric
-	query := r.db.WithContext(ctx).
-		Where("agent_id = ? AND timestamp >= ? AND timestamp <= ?", agentID, start, end)
-
-	// 如果指定了监控项ID，则只查询该监控项
-	if monitorID != "" {
-		query = query.Where("monitor_id = ?", monitorID)
-	}
-
-	err := query.Order("timestamp ASC").Find(&metrics).Error
-	return metrics, err
-}
-
-// GetMonitorMetricsByName 获取指定监控项的历史数据
-func (r *MetricRepo) GetMonitorMetricsByName(ctx context.Context, agentID, monitorID string, start, end int64, limit int) ([]models.MonitorMetric, error) {
-	var metrics []models.MonitorMetric
-	query := r.db.WithContext(ctx).
-		Where("agent_id = ? AND monitor_id = ? AND timestamp >= ? AND timestamp <= ?", agentID, monitorID, start, end).
-		Order("timestamp DESC")
-
-	if limit > 0 {
-		query = query.Limit(limit)
-	}
-
-	err := query.Find(&metrics).Error
-	return metrics, err
-}
-
-// AggregatedMonitorMetric 聚合的监控指标
-type AggregatedMonitorMetric struct {
-	Timestamp    int64   `json:"timestamp"`
-	AgentID      string  `json:"agentId"`
-	AvgResponse  float64 `json:"avgResponse"`  // 平均响应时间
-	MaxResponse  int64   `json:"maxResponse"`  // 最大响应时间
-	MinResponse  int64   `json:"minResponse"`  // 最小响应时间
-	SuccessCount int64   `json:"successCount"` // 成功次数
-	TotalCount   int64   `json:"totalCount"`   // 总次数
-	SuccessRate  float64 `json:"successRate"`  // 成功率
-	LastStatus   string  `json:"lastStatus"`   // 最后状态
-	LastErrorMsg string  `json:"lastErrorMsg"` // 最后错误信息
-}
-
-// GetAggregatedMonitorMetrics 获取聚合后的监控指标（按探针和时间间隔聚合）
-func (r *MetricRepo) GetAggregatedMonitorMetrics(ctx context.Context, monitorID string, start, end int64, interval int) ([]AggregatedMonitorMetric, error) {
-	var metrics []AggregatedMonitorMetric
-
-	query := `
-		WITH ranked_metrics AS (
-			SELECT
-				agent_id,
-				CAST(FLOOR(timestamp / ?) * ? AS BIGINT) as time_bucket,
-				response_time,
-				status,
-				error,
-				timestamp,
-				ROW_NUMBER() OVER (PARTITION BY agent_id, CAST(FLOOR(timestamp / ?) * ? AS BIGINT) ORDER BY timestamp DESC) as rn
-			FROM monitor_metrics
-			WHERE monitor_id = ? AND timestamp >= ? AND timestamp <= ?
-		)
-		SELECT
-			time_bucket as timestamp,
-			agent_id,
-			AVG(response_time) as avg_response,
-			MAX(response_time) as max_response,
-			MIN(response_time) as min_response,
-			SUM(CASE WHEN status = 'up' THEN 1 ELSE 0 END) as success_count,
-			COUNT(*) as total_count,
-			CAST(SUM(CASE WHEN status = 'up' THEN 1 ELSE 0 END) AS REAL) / CAST(COUNT(*) AS REAL) * 100 as success_rate,
-			MAX(CASE WHEN rn = 1 THEN status END) as last_status,
-			MAX(CASE WHEN rn = 1 THEN error END) as last_error_msg
-		FROM ranked_metrics
-		GROUP BY time_bucket, agent_id
-		ORDER BY timestamp ASC, agent_id
-	`
-
-	intervalMs := int64(interval * 1000)
-	err := r.db.WithContext(ctx).
-		Raw(query, intervalMs, intervalMs, intervalMs, intervalMs, monitorID, start, end).
-		Scan(&metrics).Error
-
-	return metrics, err
-}
-
-// AggregatedDiskIOMetric 磁盘IO聚合指标（所有磁盘汇总）
+// AggregatedDiskIOMetric 磁盘IO聚合指标
 type AggregatedDiskIOMetric struct {
 	Timestamp         int64   `json:"timestamp"`
-	MaxReadRate       float64 `json:"maxReadRate"`       // 最大读取速率(字节/秒)
-	MaxWriteRate      float64 `json:"maxWriteRate"`      // 最大写入速率(字节/秒)
-	TotalReadBytes    uint64  `json:"totalReadBytes"`    // 总读取字节数
-	TotalWriteBytes   uint64  `json:"totalWriteBytes"`   // 总写入字节数
-	MaxIopsInProgress uint64  `json:"maxIopsInProgress"` // 最大进行中的IO操作数
+	MaxReadRate       float64 `json:"maxReadRate"`
+	MaxWriteRate      float64 `json:"maxWriteRate"`
+	TotalReadBytes    uint64  `json:"totalReadBytes"`
+	TotalWriteBytes   uint64  `json:"totalWriteBytes"`
+	MaxIopsInProgress uint64  `json:"maxIopsInProgress"`
 }
 
-// GetDiskIOMetrics 获取聚合后的磁盘IO指标（已在存储时合并所有磁盘）
-func (r *MetricRepo) GetDiskIOMetrics(ctx context.Context, agentID string, start, end int64, interval int) ([]AggregatedDiskIOMetric, error) {
-	var metrics []AggregatedDiskIOMetric
-
-	query := `
-		SELECT
-			CAST(FLOOR(timestamp / ?) * ? AS BIGINT) as timestamp,
-			MAX(read_bytes_rate) as max_read_rate,
-			MAX(write_bytes_rate) as max_write_rate,
-			MAX(read_bytes) as total_read_bytes,
-			MAX(write_bytes) as total_write_bytes,
-			MAX(iops_in_progress) as max_iops_in_progress
-		FROM disk_io_metrics
-		WHERE agent_id = ? AND timestamp >= ? AND timestamp <= ?
-		GROUP BY 1
-		ORDER BY timestamp ASC
-	`
-
-	intervalMs := int64(interval * 1000)
-	err := r.db.WithContext(ctx).
-		Raw(query, intervalMs, intervalMs, agentID, start, end).
-		Scan(&metrics).Error
-
-	return metrics, err
-}
-
-// AggregatedGPUMetric GPU聚合指标（使用最大值）
+// AggregatedGPUMetric GPU聚合指标
 type AggregatedGPUMetric struct {
 	Timestamp      int64   `json:"timestamp"`
 	Index          int     `json:"index"`
@@ -435,32 +122,7 @@ type AggregatedGPUMetric struct {
 	MemoryTotal    uint64  `json:"memoryTotal"`
 }
 
-// GetGPUMetrics 获取聚合后的GPU指标
-func (r *MetricRepo) GetGPUMetrics(ctx context.Context, agentID string, start, end int64, interval int) ([]AggregatedGPUMetric, error) {
-	var metrics []AggregatedGPUMetric
-
-	query := `
-		SELECT
-			CAST(FLOOR(timestamp / ?) * ? AS BIGINT) as timestamp,
-			MAX(utilization) as max_utilization,
-			MAX(memory_used) as max_memory_used,
-			MAX(temperature) as max_temperature,
-			MAX(power_draw) as max_power_draw
-		FROM gpu_metrics
-		WHERE agent_id = ? AND timestamp >= ? AND timestamp <= ?
-		GROUP BY 1
-		ORDER BY timestamp ASC
-	`
-
-	intervalMs := int64(interval * 1000)
-	err := r.db.WithContext(ctx).
-		Raw(query, intervalMs, intervalMs, agentID, start, end).
-		Scan(&metrics).Error
-
-	return metrics, err
-}
-
-// AggregatedTemperatureMetric 温度聚合指标（使用最大值）
+// AggregatedTemperatureMetric 温度聚合指标
 type AggregatedTemperatureMetric struct {
 	Timestamp      int64   `json:"timestamp"`
 	SensorKey      string  `json:"sensorKey"`
@@ -468,525 +130,82 @@ type AggregatedTemperatureMetric struct {
 	MaxTemperature float64 `json:"maxTemperature"`
 }
 
-// GetTemperatureMetrics 获取聚合后的温度指标
-func (r *MetricRepo) GetTemperatureMetrics(ctx context.Context, agentID string, start, end int64, interval int) ([]AggregatedTemperatureMetric, error) {
-	var metrics []AggregatedTemperatureMetric
-
-	query := `
-		SELECT
-			CAST(FLOOR(timestamp / ?) * ? AS BIGINT) as timestamp,
-			sensor_key,
-			sensor_label,
-			MAX(temperature) as max_temperature
-		FROM temperature_metrics
-		WHERE agent_id = ? AND timestamp >= ? AND timestamp <= ?
-		GROUP BY 1, sensor_key, sensor_label
-		ORDER BY timestamp ASC, sensor_key
-	`
-
-	intervalMs := int64(interval * 1000)
-	err := r.db.WithContext(ctx).
-		Raw(query, intervalMs, intervalMs, agentID, start, end).
-		Scan(&metrics).Error
-
-	return metrics, err
+// AggregatedMonitorMetric 聚合的监控指标
+type AggregatedMonitorMetric struct {
+	Timestamp    int64   `json:"timestamp"`
+	AgentID      string  `json:"agentId"`
+	AvgResponse  float64 `json:"avgResponse"`
+	MaxResponse  int64   `json:"maxResponse"`
+	MinResponse  int64   `json:"minResponse"`
+	SuccessCount int64   `json:"successCount"`
+	TotalCount   int64   `json:"totalCount"`
+	SuccessRate  float64 `json:"successRate"`
+	LastStatus   string  `json:"lastStatus"`
+	LastErrorMsg string  `json:"lastErrorMsg"`
 }
 
-// DeleteMonitorMetrics 删除指定监控任务的所有指标数据
-func (r *MetricRepo) DeleteMonitorMetrics(ctx context.Context, monitorID string) error {
-	return r.db.WithContext(ctx).
-		Where("monitor_id = ?", monitorID).
-		Delete(&models.MonitorMetric{}).Error
+// GetMonitorMetrics 获取监控指标历史数据
+// TODO: 需要改为从 VictoriaMetrics 查询
+func (r *MetricRepo) GetMonitorMetrics(ctx context.Context, agentID, monitorID string, start, end int64) ([]MonitorMetric, error) {
+	// 暂时返回空列表，后续改为从 VictoriaMetrics 查询
+	return []MonitorMetric{}, nil
 }
 
-// DeleteAgentMetrics 删除指定探针的所有指标数据
-func (r *MetricRepo) DeleteAgentMetrics(ctx context.Context, agentID string) error {
-	tables := []interface{}{
-		&models.CPUMetric{},
-		&models.MemoryMetric{},
-		&models.DiskMetric{},
-		&models.DiskIOMetric{},
-		&models.NetworkMetric{},
-		&models.HostMetric{},
-		&models.GPUMetric{},
-		&models.TemperatureMetric{},
-		&models.MonitorMetric{},
-	}
-
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		for _, table := range tables {
-			if err := tx.Where("agent_id = ?", agentID).Delete(table).Error; err != nil {
-				return err
-			}
-		}
-		return nil
-	})
+// GetMonitorMetricsByName 获取指定监控项的历史数据
+// TODO: 需要改为从 VictoriaMetrics 查询
+func (r *MetricRepo) GetMonitorMetricsByName(ctx context.Context, agentID, monitorID string, start, end int64, limit int) ([]MonitorMetric, error) {
+	// 暂时返回空列表，后续改为从 VictoriaMetrics 查询
+	return []MonitorMetric{}, nil
 }
 
 // GetLatestMonitorMetricsByType 获取指定类型的最新监控指标（所有探针）
-func (r *MetricRepo) GetLatestMonitorMetricsByType(ctx context.Context, monitorType string) ([]*models.MonitorMetric, error) {
-	var metrics []*models.MonitorMetric
-
-	err := r.db.WithContext(ctx).Raw(`
-		SELECT m.*
-		FROM monitor_metrics m
-		INNER JOIN (
-			SELECT monitor_id, MAX(timestamp) AS ts
-			FROM monitor_metrics
-			WHERE type = ?
-			GROUP BY monitor_id
-		) latest ON m.monitor_id = latest.monitor_id AND m.timestamp = latest.ts
-		WHERE m.type = ?
-		ORDER BY m.monitor_id
-	`, monitorType, monitorType).Scan(&metrics).Error
-
-	return metrics, err
+// TODO: 需要改为从 VictoriaMetrics 查询
+func (r *MetricRepo) GetLatestMonitorMetricsByType(ctx context.Context, monitorType string) ([]*MonitorMetric, error) {
+	// 暂时返回空列表，后续改为从 VictoriaMetrics 查询
+	// 使用 GET /api/v1/query?query=pika_monitor_status{type="xxx"}
+	return []*MonitorMetric{}, nil
 }
 
-// GetAllLatestMonitorMetrics 获取所有最新的监控指标（所有探针的所有监控项，每个监控项的最新一条）
-func (r *MetricRepo) GetAllLatestMonitorMetrics(ctx context.Context) ([]*models.MonitorMetric, error) {
-	var metrics []*models.MonitorMetric
-
-	err := r.db.WithContext(ctx).Raw(`
-		SELECT m.*
-		FROM monitor_metrics m
-		INNER JOIN (
-			SELECT monitor_id, MAX(timestamp) AS ts
-			FROM monitor_metrics
-			GROUP BY monitor_id
-		) latest ON m.monitor_id = latest.monitor_id AND m.timestamp = latest.ts
-		ORDER BY m.monitor_id
-	`).Scan(&metrics).Error
-
-	return metrics, err
+// GetAllLatestMonitorMetrics 获取所有最新的监控指标（所有探针的所有监控项）
+// TODO: 需要改为从 VictoriaMetrics 查询
+func (r *MetricRepo) GetAllLatestMonitorMetrics(ctx context.Context) ([]*MonitorMetric, error) {
+	// 暂时返回空列表，后续改为从 VictoriaMetrics 查询
+	// 使用 GET /api/v1/query?query=pika_monitor_status
+	return []*MonitorMetric{}, nil
 }
 
-// ----------- 聚合表操作 -----------
-
-// AggregateCPUToAgg 将原始CPU数据聚合到聚合表
-func (r *MetricRepo) AggregateCPUToAgg(ctx context.Context, bucketSeconds int, start, end int64) error {
-	bucketMs := int64(bucketSeconds * 1000)
-	return r.db.WithContext(ctx).Exec(`
-		INSERT INTO cpu_metrics_aggs (agent_id, bucket_seconds, bucket_start, max_usage, logical_cores)
-		SELECT
-			agent_id,
-			? as bucket_seconds,
-			(timestamp / ?) * ? as bucket_start,
-			MAX(usage_percent) as max_usage,
-			MAX(logical_cores) as logical_cores
-		FROM cpu_metrics
-		WHERE timestamp >= ? AND timestamp < ?
-		GROUP BY agent_id, bucket_start
-		ON CONFLICT (agent_id, bucket_seconds, bucket_start) DO UPDATE SET
-			max_usage = EXCLUDED.max_usage,
-			logical_cores = EXCLUDED.logical_cores
-	`, bucketSeconds, bucketMs, bucketMs, start, end).Error
+// DeleteMonitorMetrics 删除指定监控任务的所有指标数据
+// TODO: 需要改为调用 VictoriaMetrics 删除 API
+func (r *MetricRepo) DeleteMonitorMetrics(ctx context.Context, monitorID string) error {
+	// 暂时不删除数据，后续调用 VictoriaMetrics 删除 API
+	// DELETE /api/v1/admin/tsdb/delete_series?match[]=pika_monitor_*{monitor_id="xxx"}
+	return nil
 }
 
-// AggregateMemoryToAgg 将原始内存数据聚合到聚合表
-func (r *MetricRepo) AggregateMemoryToAgg(ctx context.Context, bucketSeconds int, start, end int64) error {
-	bucketMs := int64(bucketSeconds * 1000)
-	return r.db.WithContext(ctx).Exec(`
-		INSERT INTO memory_metrics_aggs (agent_id, bucket_seconds, bucket_start, max_usage, total)
-		SELECT
-			agent_id,
-			? as bucket_seconds,
-			(timestamp / ?) * ? as bucket_start,
-			MAX(usage_percent) as max_usage,
-			MAX(total) as total
-		FROM memory_metrics
-		WHERE timestamp >= ? AND timestamp < ?
-		GROUP BY agent_id, bucket_start
-		ON CONFLICT (agent_id, bucket_seconds, bucket_start) DO UPDATE SET
-			max_usage = EXCLUDED.max_usage,
-			total = EXCLUDED.total
-	`, bucketSeconds, bucketMs, bucketMs, start, end).Error
-}
-
-// AggregateDiskToAgg 将原始磁盘数据聚合到聚合表
-func (r *MetricRepo) AggregateDiskToAgg(ctx context.Context, bucketSeconds int, start, end int64) error {
-	bucketMs := int64(bucketSeconds * 1000)
-	return r.db.WithContext(ctx).Exec(`
-		INSERT INTO disk_metrics_aggs (agent_id, bucket_seconds, bucket_start, mount_point, max_usage, total)
-		SELECT
-			agent_id,
-			? as bucket_seconds,
-			(timestamp / ?) * ? as bucket_start,
-			mount_point,
-			MAX(usage_percent) as max_usage,
-			MAX(total) as total
-		FROM disk_metrics
-		WHERE timestamp >= ? AND timestamp < ?
-		GROUP BY agent_id, bucket_start, mount_point
-		ON CONFLICT (agent_id, bucket_seconds, bucket_start, mount_point) DO UPDATE SET
-			max_usage = EXCLUDED.max_usage,
-			total = EXCLUDED.total
-	`, bucketSeconds, bucketMs, bucketMs, start, end).Error
-}
-
-// AggregateNetworkToAgg 将原始网络数据聚合到聚合表（按网卡分组）
-func (r *MetricRepo) AggregateNetworkToAgg(ctx context.Context, bucketSeconds int, start, end int64) error {
-	bucketMs := int64(bucketSeconds * 1000)
-	return r.db.WithContext(ctx).Exec(`
-		INSERT INTO network_metrics_aggs (agent_id, bucket_seconds, bucket_start, interface, max_sent_rate, max_recv_rate)
-		SELECT
-			agent_id,
-			? as bucket_seconds,
-			(timestamp / ?) * ? as bucket_start,
-			interface,
-			MAX(bytes_sent_rate) as max_sent_rate,
-			MAX(bytes_recv_rate) as max_recv_rate
-		FROM network_metrics
-		WHERE timestamp >= ? AND timestamp < ?
-		GROUP BY agent_id, bucket_start, interface
-		ON CONFLICT (agent_id, bucket_seconds, bucket_start, interface) DO UPDATE SET
-			max_sent_rate = EXCLUDED.max_sent_rate,
-			max_recv_rate = EXCLUDED.max_recv_rate
-	`, bucketSeconds, bucketMs, bucketMs, start, end).Error
-}
-
-// AggregateNetworkConnectionToAgg 将原始网络连接数据聚合到聚合表
-func (r *MetricRepo) AggregateNetworkConnectionToAgg(ctx context.Context, bucketSeconds int, start, end int64) error {
-	bucketMs := int64(bucketSeconds * 1000)
-	return r.db.WithContext(ctx).Exec(`
-		INSERT INTO network_connection_metrics_aggs (
-			agent_id, bucket_seconds, bucket_start,
-			max_established, max_syn_sent, max_syn_recv, max_fin_wait1, max_fin_wait2,
-			max_time_wait, max_close, max_close_wait, max_last_ack, max_listen,
-			max_closing, max_total
-		)
-		SELECT
-			agent_id,
-			? as bucket_seconds,
-			(timestamp / ?) * ? as bucket_start,
-			MAX(established) as max_established,
-			MAX(syn_sent) as max_syn_sent,
-			MAX(syn_recv) as max_syn_recv,
-			MAX(fin_wait1) as max_fin_wait1,
-			MAX(fin_wait2) as max_fin_wait2,
-			MAX(time_wait) as max_time_wait,
-			MAX(close) as max_close,
-			MAX(close_wait) as max_close_wait,
-			MAX(last_ack) as max_last_ack,
-			MAX(listen) as max_listen,
-			MAX(closing) as max_closing,
-			MAX(total) as max_total
-		FROM network_connection_metrics
-		WHERE timestamp >= ? AND timestamp < ?
-		GROUP BY agent_id, bucket_start
-		ON CONFLICT (agent_id, bucket_seconds, bucket_start) DO UPDATE SET
-			max_established = EXCLUDED.max_established,
-			max_syn_sent = EXCLUDED.max_syn_sent,
-			max_syn_recv = EXCLUDED.max_syn_recv,
-			max_fin_wait1 = EXCLUDED.max_fin_wait1,
-			max_fin_wait2 = EXCLUDED.max_fin_wait2,
-			max_time_wait = EXCLUDED.max_time_wait,
-			max_close = EXCLUDED.max_close,
-			max_close_wait = EXCLUDED.max_close_wait,
-			max_last_ack = EXCLUDED.max_last_ack,
-			max_listen = EXCLUDED.max_listen,
-			max_closing = EXCLUDED.max_closing,
-			max_total = EXCLUDED.max_total
-	`, bucketSeconds, bucketMs, bucketMs, start, end).Error
-}
-
-// AggregateDiskIOToAgg 将原始磁盘IO数据聚合到聚合表（已在存储时合并所有磁盘）
-func (r *MetricRepo) AggregateDiskIOToAgg(ctx context.Context, bucketSeconds int, start, end int64) error {
-	bucketMs := int64(bucketSeconds * 1000)
-	return r.db.WithContext(ctx).Exec(`
-		INSERT INTO disk_io_metrics_aggs (
-			agent_id, bucket_seconds, bucket_start,
-			max_read_bytes_rate, max_write_bytes_rate, max_iops_in_progress
-		)
-		SELECT
-			agent_id,
-			? as bucket_seconds,
-			(timestamp / ?) * ? as bucket_start,
-			MAX(read_bytes_rate) as max_read_bytes_rate,
-			MAX(write_bytes_rate) as max_write_bytes_rate,
-			MAX(iops_in_progress) as max_iops_in_progress
-		FROM disk_io_metrics
-		WHERE timestamp >= ? AND timestamp < ?
-		GROUP BY agent_id, bucket_start
-		ON CONFLICT (agent_id, bucket_seconds, bucket_start) DO UPDATE SET
-			max_read_bytes_rate = EXCLUDED.max_read_bytes_rate,
-			max_write_bytes_rate = EXCLUDED.max_write_bytes_rate,
-			max_iops_in_progress = EXCLUDED.max_iops_in_progress
-	`, bucketSeconds, bucketMs, bucketMs, start, end).Error
-}
-
-// AggregateGPUToAgg 将原始GPU数据聚合到聚合表
-func (r *MetricRepo) AggregateGPUToAgg(ctx context.Context, bucketSeconds int, start, end int64) error {
-	bucketMs := int64(bucketSeconds * 1000)
-	return r.db.WithContext(ctx).Exec(`
-		INSERT INTO gpu_metrics_aggs (
-			agent_id, bucket_seconds, bucket_start, index, name,
-			max_utilization, max_memory_used, max_temperature, max_power_draw, memory_total
-		)
-		SELECT
-			agent_id,
-			? as bucket_seconds,
-			(timestamp / ?) * ? as bucket_start,
-			index,
-			MAX(name) as name,
-			MAX(utilization) as max_utilization,
-			MAX(memory_used) as max_memory_used,
-			MAX(temperature) as max_temperature,
-			MAX(power_draw) as max_power_draw,
-			MAX(memory_total) as memory_total
-		FROM gpu_metrics
-		WHERE timestamp >= ? AND timestamp < ?
-		GROUP BY agent_id, bucket_start, index
-		ON CONFLICT (agent_id, bucket_seconds, bucket_start, index) DO UPDATE SET
-			name = EXCLUDED.name,
-			max_utilization = EXCLUDED.max_utilization,
-			max_memory_used = EXCLUDED.max_memory_used,
-			max_temperature = EXCLUDED.max_temperature,
-			max_power_draw = EXCLUDED.max_power_draw,
-			memory_total = EXCLUDED.memory_total
-	`, bucketSeconds, bucketMs, bucketMs, start, end).Error
-}
-
-// AggregateTemperatureToAgg 将原始温度数据聚合到聚合表
-func (r *MetricRepo) AggregateTemperatureToAgg(ctx context.Context, bucketSeconds int, start, end int64) error {
-	bucketMs := int64(bucketSeconds * 1000)
-	return r.db.WithContext(ctx).Exec(`
-		INSERT INTO temperature_metrics_aggs (
-			agent_id, bucket_seconds, bucket_start, sensor_key, sensor_label, max_temperature
-		)
-		SELECT
-			agent_id,
-			? as bucket_seconds,
-			(timestamp / ?) * ? as bucket_start,
-			sensor_key,
-			MAX(sensor_label) as sensor_label,
-			MAX(temperature) as max_temperature
-		FROM temperature_metrics
-		WHERE timestamp >= ? AND timestamp < ?
-		GROUP BY agent_id, bucket_start, sensor_key
-		ON CONFLICT (agent_id, bucket_seconds, bucket_start, sensor_key) DO UPDATE SET
-			sensor_label = EXCLUDED.sensor_label,
-			max_temperature = EXCLUDED.max_temperature
-	`, bucketSeconds, bucketMs, bucketMs, start, end).Error
-}
-
-// GetCPUMetricsAgg 从聚合表获取CPU指标
-func (r *MetricRepo) GetCPUMetricsAgg(ctx context.Context, agentID string, start, end int64, bucketSeconds int) ([]AggregatedCPUMetric, error) {
-	var metrics []AggregatedCPUMetric
-	err := r.db.WithContext(ctx).
-		Table("cpu_metrics_aggs").
-		Select("bucket_start as timestamp, max_usage, logical_cores").
-		Where("agent_id = ? AND bucket_seconds = ? AND bucket_start >= ? AND bucket_start <= ?", agentID, bucketSeconds, start, end).
-		Order("bucket_start").
-		Scan(&metrics).Error
-	return metrics, err
-}
-
-// GetMemoryMetricsAgg 从聚合表获取内存指标
-func (r *MetricRepo) GetMemoryMetricsAgg(ctx context.Context, agentID string, start, end int64, bucketSeconds int) ([]AggregatedMemoryMetric, error) {
-	var metrics []AggregatedMemoryMetric
-	err := r.db.WithContext(ctx).
-		Table("memory_metrics_aggs").
-		Select("bucket_start as timestamp, max_usage, total").
-		Where("agent_id = ? AND bucket_seconds = ? AND bucket_start >= ? AND bucket_start <= ?", agentID, bucketSeconds, start, end).
-		Order("bucket_start").
-		Scan(&metrics).Error
-	return metrics, err
-}
-
-// GetDiskMetricsAgg 从聚合表获取磁盘指标（返回预聚合的总和数据）
-// 直接查询 mount_point=" 的预聚合记录
-func (r *MetricRepo) GetDiskMetricsAgg(ctx context.Context, agentID string, start, end int64, bucketSeconds int) ([]AggregatedDiskMetric, error) {
-	var metrics []AggregatedDiskMetric
-	err := r.db.WithContext(ctx).
-		Table("disk_metrics_aggs").
-		Select("bucket_start as timestamp, mount_point, max_usage, total").
-		Where("agent_id = ? AND bucket_seconds = ? AND bucket_start >= ? AND bucket_start <= ? AND mount_point = ?",
-			agentID, bucketSeconds, start, end, ""). // 空字符串查询总和记录
-		Order("bucket_start").
-		Scan(&metrics).Error
-	return metrics, err
-}
-
-// GetNetworkMetricsAgg 从聚合表获取网络指标（可选按网卡接口过滤）
-// 不指定网卡时查询 interface=" 的预聚合数据，指定网卡时只返回该网卡的数据
-func (r *MetricRepo) GetNetworkMetricsAgg(ctx context.Context, agentID string, start, end int64, bucketSeconds int, interfaceName string) ([]AggregatedNetworkMetric, error) {
-	var metrics []AggregatedNetworkMetric
-
-	// 不管是否指定网卡，查询逻辑都一样：直接查询对应 interface 的数据
-	// interfaceName 为空字符串时，会查询到预先保存的总和数据
-	err := r.db.WithContext(ctx).
-		Table("network_metrics_aggs").
-		Select("bucket_start as timestamp, interface, max_sent_rate, max_recv_rate").
-		Where("agent_id = ? AND bucket_seconds = ? AND bucket_start >= ? AND bucket_start <= ? AND interface = ?",
-			agentID, bucketSeconds, start, end, interfaceName).
-		Order("bucket_start").
-		Scan(&metrics).Error
-	return metrics, err
-}
-
-// GetAvailableNetworkInterfaces 获取探针的可用网卡列表（不包括空白的总和记录）
-func (r *MetricRepo) GetAvailableNetworkInterfaces(ctx context.Context, agentID string) ([]string, error) {
-	var interfaces []string
-	err := r.db.WithContext(ctx).
-		Table("network_metrics").
-		Select("DISTINCT interface").
-		Where("agent_id = ? AND interface != ?", agentID, ""). // 排除空字符串（总和记录）
-		Order("interface").
-		Pluck("interface", &interfaces).Error
-	return interfaces, err
-}
-
-// GetNetworkConnectionMetricsAgg 从聚合表获取网络连接指标
-func (r *MetricRepo) GetNetworkConnectionMetricsAgg(ctx context.Context, agentID string, start, end int64, bucketSeconds int) ([]AggregatedNetworkConnectionMetric, error) {
-	var metrics []AggregatedNetworkConnectionMetric
-	err := r.db.WithContext(ctx).
-		Table("network_connection_metrics_aggs").
-		Select(`bucket_start as timestamp,
-			max_established, max_syn_sent, max_syn_recv,
-			max_fin_wait1, max_fin_wait2, max_time_wait,
-			max_close, max_close_wait, max_last_ack,
-			max_listen, max_closing, max_total`).
-		Where("agent_id = ? AND bucket_seconds = ? AND bucket_start >= ? AND bucket_start <= ?", agentID, bucketSeconds, start, end).
-		Order("bucket_start").
-		Scan(&metrics).Error
-	return metrics, err
-}
-
-// GetDiskIOMetricsAgg 从聚合表获取磁盘IO指标（汇总所有磁盘）
-func (r *MetricRepo) GetDiskIOMetricsAgg(ctx context.Context, agentID string, start, end int64, bucketSeconds int) ([]AggregatedDiskIOMetric, error) {
-	var metrics []AggregatedDiskIOMetric
-	err := r.db.WithContext(ctx).
-		Table("disk_io_metrics_aggs").
-		Select(`bucket_start as timestamp,
-			max_read_bytes_rate as max_read_rate,
-			max_write_bytes_rate as max_write_rate,
-			max_iops_in_progress`).
-		Where("agent_id = ? AND bucket_seconds = ? AND bucket_start >= ? AND bucket_start <= ?", agentID, bucketSeconds, start, end).
-		Order("bucket_start").
-		Scan(&metrics).Error
-	return metrics, err
-}
-
-// GetGPUMetricsAgg 从聚合表获取GPU指标
-func (r *MetricRepo) GetGPUMetricsAgg(ctx context.Context, agentID string, start, end int64, bucketSeconds int) ([]AggregatedGPUMetric, error) {
-	var metrics []AggregatedGPUMetric
-	err := r.db.WithContext(ctx).
-		Table("gpu_metrics_aggs").
-		Select(`bucket_start as timestamp, index, name,
-			max_utilization,
-			max_memory_used,
-			max_temperature,
-			max_power_draw,
-			memory_total`).
-		Where("agent_id = ? AND bucket_seconds = ? AND bucket_start >= ? AND bucket_start <= ?", agentID, bucketSeconds, start, end).
-		Order("bucket_start, index").
-		Scan(&metrics).Error
-	return metrics, err
-}
-
-// GetTemperatureMetricsAgg 从聚合表获取温度指标
-func (r *MetricRepo) GetTemperatureMetricsAgg(ctx context.Context, agentID string, start, end int64, bucketSeconds int) ([]AggregatedTemperatureMetric, error) {
-	var metrics []AggregatedTemperatureMetric
-	err := r.db.WithContext(ctx).
-		Table("temperature_metrics_aggs").
-		Select(`bucket_start as timestamp, sensor_key, sensor_label,
-			max_temperature`).
-		Where("agent_id = ? AND bucket_seconds = ? AND bucket_start >= ? AND bucket_start <= ?", agentID, bucketSeconds, start, end).
-		Order("bucket_start, sensor_key").
-		Scan(&metrics).Error
-	return metrics, err
-}
-
-// UpsertAggregationProgress 更新或插入聚合进度
-func (r *MetricRepo) UpsertAggregationProgress(ctx context.Context, metricType string, bucketSeconds int, lastBucket int64) error {
-	return r.db.WithContext(ctx).
-		Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "metric_type"}, {Name: "bucket_seconds"}},
-			DoUpdates: clause.AssignmentColumns([]string{"last_bucket"}),
-		}).
-		Create(&models.AggregationProgress{
-			MetricType:    metricType,
-			BucketSeconds: bucketSeconds,
-			LastBucket:    lastBucket,
-		}).Error
-}
-
-// GetAggregationProgress 获取聚合进度
-func (r *MetricRepo) GetAggregationProgress(ctx context.Context, metricType string, bucketSeconds int) (*models.AggregationProgress, error) {
-	var progress models.AggregationProgress
-	err := r.db.WithContext(ctx).
-		Where("metric_type = ? AND bucket_seconds = ?", metricType, bucketSeconds).
-		First(&progress).Error
-	if err != nil {
-		return nil, err
-	}
-	return &progress, nil
-}
-
-// ----------- 监控指标聚合表操作 -----------
-
-// AggregateMonitorMetricsToAgg 将原始监控数据聚合到聚合表
-func (r *MetricRepo) AggregateMonitorMetricsToAgg(ctx context.Context, bucketSeconds int, start, end int64) error {
-	bucketMs := int64(bucketSeconds * 1000)
-	return r.db.WithContext(ctx).Exec(`
-		INSERT INTO monitor_metrics_aggs (
-			monitor_id, agent_id, bucket_seconds, bucket_start,
-			avg_response, max_response, min_response,
-			success_count, total_count, success_rate,
-			last_status, last_error
-		)
-		WITH ranked_metrics AS (
-			SELECT
-				monitor_id,
-				agent_id,
-				(timestamp / ?) * ? as bucket_start,
-				response_time,
-				status,
-				error,
-				timestamp,
-				ROW_NUMBER() OVER (PARTITION BY monitor_id, agent_id, (timestamp / ?) * ? ORDER BY timestamp DESC) as rn
-			FROM monitor_metrics
-			WHERE timestamp >= ? AND timestamp < ?
-		)
-		SELECT
-			monitor_id,
-			agent_id,
-			? as bucket_seconds,
-			bucket_start,
-			AVG(response_time) as avg_response,
-			MAX(response_time) as max_response,
-			MIN(response_time) as min_response,
-			SUM(CASE WHEN status = 'up' THEN 1 ELSE 0 END) as success_count,
-			COUNT(*) as total_count,
-			CAST(SUM(CASE WHEN status = 'up' THEN 1 ELSE 0 END) AS REAL) / CAST(COUNT(*) AS REAL) * 100 as success_rate,
-			MAX(CASE WHEN rn = 1 THEN status END) as last_status,
-			MAX(CASE WHEN rn = 1 THEN error END) as last_error
-		FROM ranked_metrics
-		GROUP BY monitor_id, agent_id, bucket_start
-		ON CONFLICT (monitor_id, agent_id, bucket_seconds, bucket_start) DO UPDATE SET
-			avg_response = EXCLUDED.avg_response,
-			max_response = EXCLUDED.max_response,
-			min_response = EXCLUDED.min_response,
-			success_count = EXCLUDED.success_count,
-			total_count = EXCLUDED.total_count,
-			success_rate = EXCLUDED.success_rate,
-			last_status = EXCLUDED.last_status,
-			last_error = EXCLUDED.last_error
-	`, bucketMs, bucketMs, bucketMs, bucketMs, start, end, bucketSeconds).Error
-}
-
-// GetMonitorMetricsAgg 从聚合表获取监控指标（按探针和时间间隔聚合）
+// GetMonitorMetricsAgg 获取聚合后的监控指标
+// TODO: 需要改为从 VictoriaMetrics 查询
 func (r *MetricRepo) GetMonitorMetricsAgg(ctx context.Context, monitorID string, start, end int64, bucketSeconds int) ([]AggregatedMonitorMetric, error) {
-	var metrics []AggregatedMonitorMetric
-	err := r.db.WithContext(ctx).
-		Table("monitor_metrics_aggs").
-		Select(`bucket_start as timestamp, agent_id,
-			avg_response, max_response, min_response,
-			success_count, total_count, success_rate,
-			last_status, last_error as last_error_msg`).
-		Where("monitor_id = ? AND bucket_seconds = ? AND bucket_start >= ? AND bucket_start <= ?", monitorID, bucketSeconds, start, end).
-		Order("bucket_start, agent_id").
-		Scan(&metrics).Error
-	return metrics, err
+	// 暂时返回空列表，后续从 VictoriaMetrics 查询
+	return []AggregatedMonitorMetric{}, nil
 }
+
+// MonitorMetric 监控指标（与service层定义保持一致）
+type MonitorMetric struct {
+	ID             uint   `json:"id"`
+	AgentId        string `json:"agentId"`
+	MonitorId      string `json:"monitorId"`
+	Type           string `json:"type"`
+	Target         string `json:"target"`
+	Status         string `json:"status"`
+	StatusCode     int    `json:"statusCode"`
+	ResponseTime   int64  `json:"responseTime"`
+	Error          string `json:"error"`
+	Message        string `json:"message"`
+	ContentMatch   bool   `json:"contentMatch"`
+	CertExpiryTime int64  `json:"certExpiryTime"`
+	CertDaysLeft   int    `json:"certDaysLeft"`
+	Timestamp      int64  `json:"timestamp"`
+}
+
+// 注意：所有指标数据已迁移到 VictoriaMetrics
+// 查询方法已移至 MetricService，通过 VMClient 访问

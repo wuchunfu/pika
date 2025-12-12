@@ -104,8 +104,6 @@ func (h *AgentHandler) HandleWebSocket(c echo.Context) error {
 	// 注册探针 - 使用独立的context,不依赖HTTP请求的context
 	agent, err := h.agentService.RegisterAgent(context.Background(), c.RealIP(), &registerReq.AgentInfo, registerReq.ApiKey)
 	if err != nil {
-		h.logger.Error("failed to register agent", zap.Error(err))
-
 		// 发送注册失败响应
 		h.sendRegisterError(conn, err.Error())
 		conn.Close()
@@ -444,20 +442,13 @@ func (h *AgentHandler) GetMetrics(c echo.Context) error {
 	}
 
 	// GetMetrics 内部会自动计算最优聚合间隔
-	metrics, err := h.metricService.GetMetrics(ctx, agentID, metricType, start, end, 0, interfaceName)
+	metrics, err := h.metricService.GetMetrics(ctx, agentID, metricType, start, end, interfaceName)
 	if err != nil {
 		return err
 	}
 
-	return orz.Ok(c, orz.Map{
-		"agentId":   agentID,
-		"type":      metricType,
-		"range":     rangeParam,
-		"start":     start,
-		"end":       end,
-		"interface": interfaceName,
-		"metrics":   metrics,
-	})
+	// 直接返回 GetMetricsResponse，避免额外嵌套
+	return orz.Ok(c, metrics)
 }
 
 // GetLatestMetrics 获取探针最新指标（公开接口，已登录返回全部，未登录返回公开可见）

@@ -80,11 +80,6 @@ var TimeRangeOptions = []TimeRangeOption{
 	{Label: "7天", Value: "7d"},
 }
 
-// MetricsConfig 指标数据配置
-type MetricsConfig struct {
-	RetentionHours int `json:"retentionHours"` // 原始数据保留小时数（默认168小时=7天）
-}
-
 // AlertConfig 全局告警配置
 type AlertConfig struct {
 	Enabled bool       `json:"enabled"` // 是否启用全局告警

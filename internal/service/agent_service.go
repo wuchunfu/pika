@@ -331,12 +331,12 @@ func (s *AgentService) GetStatistics(ctx context.Context) (map[string]interface{
 }
 
 // GetMonitorMetrics 获取监控指标历史数据
-func (s *AgentService) GetMonitorMetrics(ctx context.Context, agentID, monitorName string, start, end int64) ([]models.MonitorMetric, error) {
+func (s *AgentService) GetMonitorMetrics(ctx context.Context, agentID, monitorName string, start, end int64) ([]MonitorMetric, error) {
 	return s.metricService.GetMonitorMetrics(ctx, agentID, monitorName, start, end)
 }
 
 // GetMonitorMetricsByName 获取指定监控项的历史数据
-func (s *AgentService) GetMonitorMetricsByName(ctx context.Context, agentID, monitorName string, start, end int64, limit int) ([]models.MonitorMetric, error) {
+func (s *AgentService) GetMonitorMetricsByName(ctx context.Context, agentID, monitorName string, start, end int64, limit int) ([]MonitorMetric, error) {
 	return s.metricService.GetMonitorMetricsByName(ctx, agentID, monitorName, start, end, limit)
 }
 

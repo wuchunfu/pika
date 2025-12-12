@@ -14,3 +14,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+  victoriametrics:
+    image: victoriametrics/victoria-metrics:v1.131.0
+    container_name: victoriametrics
+    restart: always
+    ports:
+      - "8428:8428"  # API, PromQL, insert, select
+    volumes:
+      - ./data/vmdata:/victoria-metrics-data

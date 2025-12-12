@@ -188,8 +188,6 @@ func (m *Manager) sendMetrics(conn WebSocketWriter, metricType protocol.MetricTy
 		return err
 	}
 
-	//dataBytes = bytes.ReplaceAll(dataBytes, []byte{0x00}, []byte(`"`))
-
 	metrics := protocol.MetricsWrapper{
 		Type: metricType,
 		Data: json.RawMessage(dataBytes),

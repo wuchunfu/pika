@@ -28,14 +28,6 @@ func (r *MetricRepo) SaveHostMetric(ctx context.Context, metric *models.HostMetr
 		Create(metric).Error
 }
 
-// GetAvailableNetworkInterfaces 获取探针的可用网卡列表
-// TODO: 需要改为从 VictoriaMetrics 查询 labels
-func (r *MetricRepo) GetAvailableNetworkInterfaces(ctx context.Context, agentID string) ([]string, error) {
-	// 暂时返回空列表，后续改为从 VictoriaMetrics 查询
-	// 使用 GET /api/v1/label/interface/values?match[]=pika_network_sent_bytes_rate{agent_id="xxx"}
-	return []string{}, nil
-}
-
 // DeleteAgentMetrics 删除指定探针的所有指标数据
 // TODO: 需要改为调用 VictoriaMetrics 的 DELETE API
 func (r *MetricRepo) DeleteAgentMetrics(ctx context.Context, agentID string) error {
@@ -144,50 +136,8 @@ type AggregatedMonitorMetric struct {
 	LastErrorMsg string  `json:"lastErrorMsg"`
 }
 
-// GetMonitorMetrics 获取监控指标历史数据
-// TODO: 需要改为从 VictoriaMetrics 查询
-func (r *MetricRepo) GetMonitorMetrics(ctx context.Context, agentID, monitorID string, start, end int64) ([]MonitorMetric, error) {
-	// 暂时返回空列表，后续改为从 VictoriaMetrics 查询
-	return []MonitorMetric{}, nil
-}
-
-// GetMonitorMetricsByName 获取指定监控项的历史数据
-// TODO: 需要改为从 VictoriaMetrics 查询
-func (r *MetricRepo) GetMonitorMetricsByName(ctx context.Context, agentID, monitorID string, start, end int64, limit int) ([]MonitorMetric, error) {
-	// 暂时返回空列表，后续改为从 VictoriaMetrics 查询
-	return []MonitorMetric{}, nil
-}
-
-// GetLatestMonitorMetricsByType 获取指定类型的最新监控指标（所有探针）
-// TODO: 需要改为从 VictoriaMetrics 查询
-func (r *MetricRepo) GetLatestMonitorMetricsByType(ctx context.Context, monitorType string) ([]*MonitorMetric, error) {
-	// 暂时返回空列表，后续改为从 VictoriaMetrics 查询
-	// 使用 GET /api/v1/query?query=pika_monitor_status{type="xxx"}
-	return []*MonitorMetric{}, nil
-}
-
-// GetAllLatestMonitorMetrics 获取所有最新的监控指标（所有探针的所有监控项）
-// TODO: 需要改为从 VictoriaMetrics 查询
-func (r *MetricRepo) GetAllLatestMonitorMetrics(ctx context.Context) ([]*MonitorMetric, error) {
-	// 暂时返回空列表，后续改为从 VictoriaMetrics 查询
-	// 使用 GET /api/v1/query?query=pika_monitor_status
-	return []*MonitorMetric{}, nil
-}
-
-// DeleteMonitorMetrics 删除指定监控任务的所有指标数据
-// TODO: 需要改为调用 VictoriaMetrics 删除 API
-func (r *MetricRepo) DeleteMonitorMetrics(ctx context.Context, monitorID string) error {
-	// 暂时不删除数据，后续调用 VictoriaMetrics 删除 API
-	// DELETE /api/v1/admin/tsdb/delete_series?match[]=pika_monitor_*{monitor_id="xxx"}
-	return nil
-}
-
-// GetMonitorMetricsAgg 获取聚合后的监控指标
-// TODO: 需要改为从 VictoriaMetrics 查询
-func (r *MetricRepo) GetMonitorMetricsAgg(ctx context.Context, monitorID string, start, end int64, bucketSeconds int) ([]AggregatedMonitorMetric, error) {
-	// 暂时返回空列表，后续从 VictoriaMetrics 查询
-	return []AggregatedMonitorMetric{}, nil
-}
+// 注意：监控相关的查询方法已迁移到 MetricService
+// DeleteMonitorMetrics 方法已在 MetricService 中实现
 
 // MonitorMetric 监控指标（与service层定义保持一致）
 type MonitorMetric struct {

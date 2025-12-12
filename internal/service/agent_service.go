@@ -19,22 +19,20 @@ import (
 type AgentService struct {
 	logger *zap.Logger
 	*orz.Service
-	AgentRepo        *repo.AgentRepo
-	monitorStatsRepo *repo.MonitorStatsRepo
-	apiKeyService    *ApiKeyService
-	metricService    *MetricService
-	geoipService     *GeoIPService
+	AgentRepo     *repo.AgentRepo
+	apiKeyService *ApiKeyService
+	metricService *MetricService
+	geoipService  *GeoIPService
 }
 
 func NewAgentService(logger *zap.Logger, db *gorm.DB, apiKeyService *ApiKeyService, metricService *MetricService, geoipService *GeoIPService) *AgentService {
 	return &AgentService{
-		logger:           logger,
-		Service:          orz.NewService(db),
-		AgentRepo:        repo.NewAgentRepo(db),
-		monitorStatsRepo: repo.NewMonitorStatsRepo(db),
-		apiKeyService:    apiKeyService,
-		metricService:    metricService,
-		geoipService:     geoipService,
+		logger:        logger,
+		Service:       orz.NewService(db),
+		AgentRepo:     repo.NewAgentRepo(db),
+		apiKeyService: apiKeyService,
+		metricService: metricService,
+		geoipService:  geoipService,
 	}
 }
 
@@ -350,13 +348,7 @@ func (s *AgentService) DeleteAgent(ctx context.Context, agentID string) error {
 			return err
 		}
 
-		// 2. 删除探针的监控统计数据
-		if err := s.monitorStatsRepo.DeleteByAgentId(ctx, agentID); err != nil {
-			s.logger.Error("删除探针监控统计数据失败", zap.String("agentId", agentID), zap.Error(err))
-			return err
-		}
-
-		// 3. 删除探针的审计结果
+		// 2. 删除探针的审计结果
 		if err := s.AgentRepo.DeleteAuditResults(ctx, agentID); err != nil {
 			s.logger.Error("删除探针审计结果失败", zap.String("agentId", agentID), zap.Error(err))
 			return err

@@ -90,9 +90,6 @@ func setup(app *orz.App) error {
 	components.MonitorService.SetScheduler(monitorScheduler)
 	monitorScheduler.Start(ctx)
 
-	// 启动监控统计计算任务
-	go startMonitorStatsCalculation(ctx, components, app.Logger())
-
 	// 启动流量重置检查任务(每小时检查一次)
 	go startTrafficResetCheck(ctx, components, app.Logger())
 
@@ -305,7 +302,7 @@ func autoMigrate(database *gorm.DB) error {
 		&models.AlertRecord{},
 		&models.AlertState{},
 		&models.MonitorTask{},
-		&models.MonitorStats{},
+		// MonitorStats 已废弃，统计数据从 VictoriaMetrics 查询
 		&models.TamperProtectConfig{},
 		&models.TamperEvent{},
 		&models.TamperAlert{},
@@ -415,35 +412,6 @@ func startMetricsMonitoring(ctx context.Context, components *AppComponents, logg
 			// 检查监控相关告警（证书和服务下线）
 			if err := components.AlertService.CheckMonitorAlerts(ctx); err != nil {
 				logger.Error("检查监控告警失败", zap.Error(err))
-			}
-		}
-	}
-}
-
-// startMonitorStatsCalculation 启动监控统计计算任务
-func startMonitorStatsCalculation(ctx context.Context, components *AppComponents, logger *zap.Logger) {
-	logger.Info("启动监控统计计算任务")
-
-	ticker := time.NewTicker(5 * time.Minute) // 每5分钟计算一次统计数据
-	defer ticker.Stop()
-
-	// 首次启动时立即计算一次
-	if err := components.MonitorService.CalculateMonitorStats(ctx); err != nil {
-		logger.Error("计算监控统计数据失败", zap.Error(err))
-	} else {
-		logger.Info("监控统计数据计算完成")
-	}
-
-	for {
-		select {
-		case <-ctx.Done():
-			logger.Info("监控统计计算任务已停止")
-			return
-		case <-ticker.C:
-			if err := components.MonitorService.CalculateMonitorStats(ctx); err != nil {
-				logger.Error("计算监控统计数据失败", zap.Error(err))
-			} else {
-				logger.Debug("监控统计数据计算完成")
 			}
 		}
 	}

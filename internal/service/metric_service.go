@@ -46,12 +46,11 @@ type QueryDefinition struct {
 
 // MetricService 指标服务
 type MetricService struct {
-	logger           *zap.Logger
-	metricRepo       *repo.MetricRepo
-	monitorStatsRepo *repo.MonitorStatsRepo
-	propertyService  *PropertyService
-	trafficService   *TrafficService // 流量统计服务
-	vmClient         *vmclient.VMClient
+	logger          *zap.Logger
+	metricRepo      *repo.MetricRepo
+	propertyService *PropertyService
+	trafficService  *TrafficService // 流量统计服务
+	vmClient        *vmclient.VMClient
 
 	latestCache cache.Cache[string, *LatestMetrics]
 }
@@ -59,13 +58,12 @@ type MetricService struct {
 // NewMetricService 创建指标服务
 func NewMetricService(logger *zap.Logger, db *gorm.DB, propertyService *PropertyService, trafficService *TrafficService, vmClient *vmclient.VMClient) *MetricService {
 	return &MetricService{
-		logger:           logger,
-		metricRepo:       repo.NewMetricRepo(db),
-		monitorStatsRepo: repo.NewMonitorStatsRepo(db),
-		propertyService:  propertyService,
-		trafficService:   trafficService,
-		vmClient:         vmClient,
-		latestCache:      cache.New[string, *LatestMetrics](time.Minute),
+		logger:          logger,
+		metricRepo:      repo.NewMetricRepo(db),
+		propertyService: propertyService,
+		trafficService:  trafficService,
+		vmClient:        vmClient,
+		latestCache:     cache.New[string, *LatestMetrics](time.Minute),
 	}
 }
 
@@ -708,4 +706,865 @@ func (s *MetricService) convertQueryResultToSeries(result *vmclient.QueryResult,
 	}
 
 	return allSeries
+}
+
+// ===== 监控查询相关 =====
+
+// 监控查询类型常量
+const (
+	MonitorQueryTypeCurrent  = "current"   // 当前状态
+	MonitorQueryTypeStats24h = "stats_24h" // 24小时统计
+	MonitorQueryTypeStats7d  = "stats_7d"  // 7天统计
+	MonitorQueryTypeHistory  = "history"   // 历史趋势
+)
+
+// MonitorStatsResult 监控统计结果（所有探针的聚合数据）
+type MonitorStatsResult struct {
+	CurrentResponse int64   // 所有探针平均响应时间(ms)
+	AvgResponse24h  int64   // 24小时平均响应时间(ms)
+	Uptime24h       float64 // 24小时在线率(百分比)
+	Uptime7d        float64 // 7天在线率(百分比)
+	CertExpiryDate  int64   // 最早过期的证书时间(毫秒时间戳)
+	CertExpiryDays  int     // 证书剩余天数
+	LastCheckTime   int64   // 最后检测时间(毫秒时间戳)
+	LastCheckStatus string  // 聚合状态（up/down/unknown）
+	LastCheckError  string  // 最后检测错误信息
+	AgentCount      int     // 探针数量
+}
+
+// AgentMonitorStat 单个探针的监控统计
+type AgentMonitorStat struct {
+	AgentID          string
+	CurrentResponse  int64
+	AvgResponse24h   int64
+	Uptime24h        float64
+	Uptime7d         float64
+	LastCheckStatus  string
+	LastCheckError   string
+	LastCheckTime    int64
+	CertExpiryDate   int64
+	CertExpiryDays   int
+	TotalChecks24h   int64
+	SuccessChecks24h int64
+	TotalChecks7d    int64
+	SuccessChecks7d  int64
+}
+
+// buildMonitorPromQLQueries 构建监控查询的 PromQL 语句
+func (s *MetricService) buildMonitorPromQLQueries(monitorID string, queryType string) []QueryDefinition {
+	var queries []QueryDefinition
+
+	switch queryType {
+	case MonitorQueryTypeCurrent:
+		// 当前状态查询（即时查询）
+		queries = []QueryDefinition{
+			{Name: "response_time", Query: fmt.Sprintf(`pika_monitor_response_time_ms{monitor_id="%s"}`, monitorID)},
+			{Name: "status", Query: fmt.Sprintf(`pika_monitor_status{monitor_id="%s"}`, monitorID)},
+			{Name: "cert_days", Query: fmt.Sprintf(`pika_monitor_cert_days_left{monitor_id="%s"}`, monitorID)},
+			{Name: "cert_expiry", Query: fmt.Sprintf(`pika_monitor_cert_expiry_timestamp_ms{monitor_id="%s"}`, monitorID)},
+		}
+
+	case MonitorQueryTypeStats24h:
+		// 24小时统计查询
+		queries = []QueryDefinition{
+			// 24小时平均响应时间（按探针分组）
+			{Name: "avg_response_24h", Query: fmt.Sprintf(`avg_over_time(pika_monitor_response_time_ms{monitor_id="%s"}[24h])`, monitorID)},
+			// 24小时成功次数
+			{Name: "success_count_24h", Query: fmt.Sprintf(`count_over_time(pika_monitor_status{monitor_id="%s",status="up"}[24h:1m])`, monitorID)},
+			// 24小时总检测次数
+			{Name: "total_count_24h", Query: fmt.Sprintf(`count_over_time(pika_monitor_status{monitor_id="%s"}[24h:1m])`, monitorID)},
+		}
+
+	case MonitorQueryTypeStats7d:
+		// 7天统计查询
+		queries = []QueryDefinition{
+			// 7天成功次数
+			{Name: "success_count_7d", Query: fmt.Sprintf(`count_over_time(pika_monitor_status{monitor_id="%s",status="up"}[7d:5m])`, monitorID)},
+			// 7天总检测次数
+			{Name: "total_count_7d", Query: fmt.Sprintf(`count_over_time(pika_monitor_status{monitor_id="%s"}[7d:5m])`, monitorID)},
+		}
+
+	case MonitorQueryTypeHistory:
+		// 历史趋势查询（范围查询）
+		queries = []QueryDefinition{
+			{Name: "response_time", Query: fmt.Sprintf(`pika_monitor_response_time_ms{monitor_id="%s"}`, monitorID)},
+		}
+	}
+
+	return queries
+}
+
+// GetMonitorStats 获取监控任务的聚合统计数据
+func (s *MetricService) GetMonitorStats(ctx context.Context, monitorID string) (*MonitorStatsResult, error) {
+	// 1. 查询当前状态
+	currentQueries := s.buildMonitorPromQLQueries(monitorID, MonitorQueryTypeCurrent)
+	currentData := make(map[string]*vmclient.QueryResult)
+	for _, q := range currentQueries {
+		queryResult, err := s.vmClient.Query(ctx, q.Query)
+		if err != nil {
+			s.logger.Warn("查询当前状态失败", zap.String("query", q.Name), zap.Error(err))
+			continue
+		}
+		currentData[q.Name] = queryResult
+	}
+
+	// 2. 查询24小时统计
+	stats24hQueries := s.buildMonitorPromQLQueries(monitorID, MonitorQueryTypeStats24h)
+	stats24hData := make(map[string]*vmclient.QueryResult)
+	for _, q := range stats24hQueries {
+		queryResult, err := s.vmClient.Query(ctx, q.Query)
+		if err != nil {
+			s.logger.Warn("查询24小时统计失败", zap.String("query", q.Name), zap.Error(err))
+			continue
+		}
+		stats24hData[q.Name] = queryResult
+	}
+
+	// 3. 查询7天统计
+	stats7dQueries := s.buildMonitorPromQLQueries(monitorID, MonitorQueryTypeStats7d)
+	stats7dData := make(map[string]*vmclient.QueryResult)
+	for _, q := range stats7dQueries {
+		queryResult, err := s.vmClient.Query(ctx, q.Query)
+		if err != nil {
+			s.logger.Warn("查询7天统计失败", zap.String("query", q.Name), zap.Error(err))
+			continue
+		}
+		stats7dData[q.Name] = queryResult
+	}
+
+	// 4. 聚合计算
+	return s.aggregateMonitorQueryResults(currentData, stats24hData, stats7dData), nil
+}
+
+// aggregateMonitorQueryResults 聚合多个探针的查询结果
+func (s *MetricService) aggregateMonitorQueryResults(
+	currentData map[string]*vmclient.QueryResult,
+	stats24hData map[string]*vmclient.QueryResult,
+	stats7dData map[string]*vmclient.QueryResult,
+) *MonitorStatsResult {
+	result := &MonitorStatsResult{
+		LastCheckStatus: "unknown",
+	}
+
+	// 解析当前状态数据
+	agentStats := make(map[string]*AgentMonitorStat)
+
+	// 处理响应时间
+	if respResult, ok := currentData["response_time"]; ok && respResult != nil {
+		for _, ts := range respResult.Data.Result {
+			agentID := ts.Metric["agent_id"]
+			if agentID == "" {
+				continue
+			}
+			if _, exists := agentStats[agentID]; !exists {
+				agentStats[agentID] = &AgentMonitorStat{AgentID: agentID}
+			}
+
+			// 获取最新值
+			if len(ts.Values) > 0 {
+				lastValue := ts.Values[len(ts.Values)-1]
+				if len(lastValue) >= 2 {
+					timestamp, _ := lastValue[0].(float64)
+					valueStr, _ := lastValue[1].(string)
+					var value float64
+					fmt.Sscanf(valueStr, "%f", &value)
+
+					agentStats[agentID].CurrentResponse = int64(value)
+					agentStats[agentID].LastCheckTime = int64(timestamp * 1000)
+				}
+			}
+		}
+	}
+
+	// 处理状态
+	if statusResult, ok := currentData["status"]; ok && statusResult != nil {
+		for _, ts := range statusResult.Data.Result {
+			agentID := ts.Metric["agent_id"]
+			status := ts.Metric["status"]
+			if agentID == "" {
+				continue
+			}
+			if _, exists := agentStats[agentID]; !exists {
+				agentStats[agentID] = &AgentMonitorStat{AgentID: agentID}
+			}
+
+			// 获取最新值
+			if len(ts.Values) > 0 {
+				lastValue := ts.Values[len(ts.Values)-1]
+				if len(lastValue) >= 2 {
+					valueStr, _ := lastValue[1].(string)
+					var value float64
+					fmt.Sscanf(valueStr, "%f", &value)
+
+					if value > 0 {
+						agentStats[agentID].LastCheckStatus = "up"
+					} else {
+						agentStats[agentID].LastCheckStatus = "down"
+					}
+					// 状态标签中也包含了状态信息
+					if status != "" {
+						agentStats[agentID].LastCheckStatus = status
+					}
+				}
+			}
+		}
+	}
+
+	// 处理证书信息
+	if certDaysResult, ok := currentData["cert_days"]; ok && certDaysResult != nil {
+		for _, ts := range certDaysResult.Data.Result {
+			agentID := ts.Metric["agent_id"]
+			if agentID == "" {
+				continue
+			}
+			if _, exists := agentStats[agentID]; !exists {
+				agentStats[agentID] = &AgentMonitorStat{AgentID: agentID}
+			}
+
+			if len(ts.Values) > 0 {
+				lastValue := ts.Values[len(ts.Values)-1]
+				if len(lastValue) >= 2 {
+					valueStr, _ := lastValue[1].(string)
+					var value float64
+					fmt.Sscanf(valueStr, "%f", &value)
+					agentStats[agentID].CertExpiryDays = int(value)
+				}
+			}
+		}
+	}
+
+	if certExpiryResult, ok := currentData["cert_expiry"]; ok && certExpiryResult != nil {
+		for _, ts := range certExpiryResult.Data.Result {
+			agentID := ts.Metric["agent_id"]
+			if agentID == "" {
+				continue
+			}
+			if _, exists := agentStats[agentID]; !exists {
+				agentStats[agentID] = &AgentMonitorStat{AgentID: agentID}
+			}
+
+			if len(ts.Values) > 0 {
+				lastValue := ts.Values[len(ts.Values)-1]
+				if len(lastValue) >= 2 {
+					valueStr, _ := lastValue[1].(string)
+					var value float64
+					fmt.Sscanf(valueStr, "%f", &value)
+					agentStats[agentID].CertExpiryDate = int64(value)
+				}
+			}
+		}
+	}
+
+	// 处理24小时统计
+	if avgResp24h, ok := stats24hData["avg_response_24h"]; ok && avgResp24h != nil {
+		for _, ts := range avgResp24h.Data.Result {
+			agentID := ts.Metric["agent_id"]
+			if agentID == "" {
+				continue
+			}
+			if _, exists := agentStats[agentID]; !exists {
+				agentStats[agentID] = &AgentMonitorStat{AgentID: agentID}
+			}
+
+			if len(ts.Values) > 0 {
+				lastValue := ts.Values[len(ts.Values)-1]
+				if len(lastValue) >= 2 {
+					valueStr, _ := lastValue[1].(string)
+					var value float64
+					fmt.Sscanf(valueStr, "%f", &value)
+					agentStats[agentID].AvgResponse24h = int64(value)
+				}
+			}
+		}
+	}
+
+	if successCount24h, ok := stats24hData["success_count_24h"]; ok && successCount24h != nil {
+		for _, ts := range successCount24h.Data.Result {
+			agentID := ts.Metric["agent_id"]
+			if agentID == "" {
+				continue
+			}
+			if _, exists := agentStats[agentID]; !exists {
+				agentStats[agentID] = &AgentMonitorStat{AgentID: agentID}
+			}
+
+			if len(ts.Values) > 0 {
+				lastValue := ts.Values[len(ts.Values)-1]
+				if len(lastValue) >= 2 {
+					valueStr, _ := lastValue[1].(string)
+					var value float64
+					fmt.Sscanf(valueStr, "%f", &value)
+					agentStats[agentID].SuccessChecks24h = int64(value)
+				}
+			}
+		}
+	}
+
+	if totalCount24h, ok := stats24hData["total_count_24h"]; ok && totalCount24h != nil {
+		for _, ts := range totalCount24h.Data.Result {
+			agentID := ts.Metric["agent_id"]
+			if agentID == "" {
+				continue
+			}
+			if _, exists := agentStats[agentID]; !exists {
+				agentStats[agentID] = &AgentMonitorStat{AgentID: agentID}
+			}
+
+			if len(ts.Values) > 0 {
+				lastValue := ts.Values[len(ts.Values)-1]
+				if len(lastValue) >= 2 {
+					valueStr, _ := lastValue[1].(string)
+					var value float64
+					fmt.Sscanf(valueStr, "%f", &value)
+					agentStats[agentID].TotalChecks24h = int64(value)
+				}
+			}
+		}
+	}
+
+	// 处理7天统计
+	if successCount7d, ok := stats7dData["success_count_7d"]; ok && successCount7d != nil {
+		for _, ts := range successCount7d.Data.Result {
+			agentID := ts.Metric["agent_id"]
+			if agentID == "" {
+				continue
+			}
+			if _, exists := agentStats[agentID]; !exists {
+				agentStats[agentID] = &AgentMonitorStat{AgentID: agentID}
+			}
+
+			if len(ts.Values) > 0 {
+				lastValue := ts.Values[len(ts.Values)-1]
+				if len(lastValue) >= 2 {
+					valueStr, _ := lastValue[1].(string)
+					var value float64
+					fmt.Sscanf(valueStr, "%f", &value)
+					agentStats[agentID].SuccessChecks7d = int64(value)
+				}
+			}
+		}
+	}
+
+	if totalCount7d, ok := stats7dData["total_count_7d"]; ok && totalCount7d != nil {
+		for _, ts := range totalCount7d.Data.Result {
+			agentID := ts.Metric["agent_id"]
+			if agentID == "" {
+				continue
+			}
+			if _, exists := agentStats[agentID]; !exists {
+				agentStats[agentID] = &AgentMonitorStat{AgentID: agentID}
+			}
+
+			if len(ts.Values) > 0 {
+				lastValue := ts.Values[len(ts.Values)-1]
+				if len(lastValue) >= 2 {
+					valueStr, _ := lastValue[1].(string)
+					var value float64
+					fmt.Sscanf(valueStr, "%f", &value)
+					agentStats[agentID].TotalChecks7d = int64(value)
+				}
+			}
+		}
+	}
+
+	// 计算在线率
+	for _, stat := range agentStats {
+		if stat.TotalChecks24h > 0 {
+			stat.Uptime24h = float64(stat.SuccessChecks24h) / float64(stat.TotalChecks24h) * 100
+		}
+		if stat.TotalChecks7d > 0 {
+			stat.Uptime7d = float64(stat.SuccessChecks7d) / float64(stat.TotalChecks7d) * 100
+		}
+	}
+
+	// 聚合所有探针的数据
+	if len(agentStats) == 0 {
+		return result
+	}
+
+	var totalCurrentResponse int64
+	var totalAvgResponse24h int64
+	var totalUptime24h float64
+	var totalUptime7d float64
+	var lastCheckTime int64
+	hasUp := false
+	hasDown := false
+	hasCert := false
+	var minCertExpiryDate int64
+	var minCertExpiryDays int
+
+	for _, stat := range agentStats {
+		totalCurrentResponse += stat.CurrentResponse
+		totalAvgResponse24h += stat.AvgResponse24h
+		totalUptime24h += stat.Uptime24h
+		totalUptime7d += stat.Uptime7d
+
+		if stat.LastCheckTime > lastCheckTime {
+			lastCheckTime = stat.LastCheckTime
+		}
+
+		if stat.LastCheckStatus == "up" {
+			hasUp = true
+		} else if stat.LastCheckStatus == "down" {
+			hasDown = true
+		}
+
+		if stat.CertExpiryDate > 0 {
+			if !hasCert || stat.CertExpiryDate < minCertExpiryDate {
+				minCertExpiryDate = stat.CertExpiryDate
+				minCertExpiryDays = stat.CertExpiryDays
+				hasCert = true
+			}
+		}
+	}
+
+	count := len(agentStats)
+	result.AgentCount = count
+	if count > 0 {
+		result.CurrentResponse = totalCurrentResponse / int64(count)
+		result.AvgResponse24h = totalAvgResponse24h / int64(count)
+		result.Uptime24h = totalUptime24h / float64(count)
+		result.Uptime7d = totalUptime7d / float64(count)
+	}
+	result.LastCheckTime = lastCheckTime
+
+	// 聚合状态：只要有一个探针 up，整体就是 up
+	if hasUp {
+		result.LastCheckStatus = "up"
+	} else if hasDown {
+		result.LastCheckStatus = "down"
+	}
+
+	if hasCert {
+		result.CertExpiryDate = minCertExpiryDate
+		result.CertExpiryDays = minCertExpiryDays
+	}
+
+	return result
+}
+
+// GetMonitorAgentStats 获取监控任务各探针的统计数据
+func (s *MetricService) GetMonitorAgentStats(ctx context.Context, monitorID string) ([]AgentMonitorStat, error) {
+	// 复用 GetMonitorStats 的逻辑，但保留每个探针的独立数据
+	// 1. 查询当前状态
+	currentQueries := s.buildMonitorPromQLQueries(monitorID, MonitorQueryTypeCurrent)
+	currentData := make(map[string]*vmclient.QueryResult)
+	for _, q := range currentQueries {
+		queryResult, err := s.vmClient.Query(ctx, q.Query)
+		if err != nil {
+			s.logger.Warn("查询当前状态失败", zap.String("query", q.Name), zap.Error(err))
+			continue
+		}
+		currentData[q.Name] = queryResult
+	}
+
+	// 2. 查询24小时统计
+	stats24hQueries := s.buildMonitorPromQLQueries(monitorID, MonitorQueryTypeStats24h)
+	stats24hData := make(map[string]*vmclient.QueryResult)
+	for _, q := range stats24hQueries {
+		queryResult, err := s.vmClient.Query(ctx, q.Query)
+		if err != nil {
+			s.logger.Warn("查询24小时统计失败", zap.String("query", q.Name), zap.Error(err))
+			continue
+		}
+		stats24hData[q.Name] = queryResult
+	}
+
+	// 3. 查询7天统计
+	stats7dQueries := s.buildMonitorPromQLQueries(monitorID, MonitorQueryTypeStats7d)
+	stats7dData := make(map[string]*vmclient.QueryResult)
+	for _, q := range stats7dQueries {
+		queryResult, err := s.vmClient.Query(ctx, q.Query)
+		if err != nil {
+			s.logger.Warn("查询7天统计失败", zap.String("query", q.Name), zap.Error(err))
+			continue
+		}
+		stats7dData[q.Name] = queryResult
+	}
+
+	// 4. 提取每个探针的数据（参考 aggregateMonitorQueryResults，但不聚合）
+	agentStatsMap := make(map[string]*AgentMonitorStat)
+
+	// 处理响应时间
+	if respResult, ok := currentData["response_time"]; ok && respResult != nil {
+		for _, ts := range respResult.Data.Result {
+			agentID := ts.Metric["agent_id"]
+			if agentID == "" {
+				continue
+			}
+			if _, exists := agentStatsMap[agentID]; !exists {
+				agentStatsMap[agentID] = &AgentMonitorStat{AgentID: agentID}
+			}
+
+			if len(ts.Values) > 0 {
+				lastValue := ts.Values[len(ts.Values)-1]
+				if len(lastValue) >= 2 {
+					timestamp, _ := lastValue[0].(float64)
+					valueStr, _ := lastValue[1].(string)
+					var value float64
+					fmt.Sscanf(valueStr, "%f", &value)
+
+					agentStatsMap[agentID].CurrentResponse = int64(value)
+					agentStatsMap[agentID].LastCheckTime = int64(timestamp * 1000)
+				}
+			}
+		}
+	}
+
+	// 处理状态
+	if statusResult, ok := currentData["status"]; ok && statusResult != nil {
+		for _, ts := range statusResult.Data.Result {
+			agentID := ts.Metric["agent_id"]
+			status := ts.Metric["status"]
+			if agentID == "" {
+				continue
+			}
+			if _, exists := agentStatsMap[agentID]; !exists {
+				agentStatsMap[agentID] = &AgentMonitorStat{AgentID: agentID}
+			}
+
+			if len(ts.Values) > 0 {
+				lastValue := ts.Values[len(ts.Values)-1]
+				if len(lastValue) >= 2 {
+					valueStr, _ := lastValue[1].(string)
+					var value float64
+					fmt.Sscanf(valueStr, "%f", &value)
+
+					if value > 0 {
+						agentStatsMap[agentID].LastCheckStatus = "up"
+					} else {
+						agentStatsMap[agentID].LastCheckStatus = "down"
+					}
+					if status != "" {
+						agentStatsMap[agentID].LastCheckStatus = status
+					}
+				}
+			}
+		}
+	}
+
+	// 处理证书信息
+	if certDaysResult, ok := currentData["cert_days"]; ok && certDaysResult != nil {
+		for _, ts := range certDaysResult.Data.Result {
+			agentID := ts.Metric["agent_id"]
+			if agentID == "" {
+				continue
+			}
+			if _, exists := agentStatsMap[agentID]; !exists {
+				agentStatsMap[agentID] = &AgentMonitorStat{AgentID: agentID}
+			}
+
+			if len(ts.Values) > 0 {
+				lastValue := ts.Values[len(ts.Values)-1]
+				if len(lastValue) >= 2 {
+					valueStr, _ := lastValue[1].(string)
+					var value float64
+					fmt.Sscanf(valueStr, "%f", &value)
+					agentStatsMap[agentID].CertExpiryDays = int(value)
+				}
+			}
+		}
+	}
+
+	if certExpiryResult, ok := currentData["cert_expiry"]; ok && certExpiryResult != nil {
+		for _, ts := range certExpiryResult.Data.Result {
+			agentID := ts.Metric["agent_id"]
+			if agentID == "" {
+				continue
+			}
+			if _, exists := agentStatsMap[agentID]; !exists {
+				agentStatsMap[agentID] = &AgentMonitorStat{AgentID: agentID}
+			}
+
+			if len(ts.Values) > 0 {
+				lastValue := ts.Values[len(ts.Values)-1]
+				if len(lastValue) >= 2 {
+					valueStr, _ := lastValue[1].(string)
+					var value float64
+					fmt.Sscanf(valueStr, "%f", &value)
+					agentStatsMap[agentID].CertExpiryDate = int64(value)
+				}
+			}
+		}
+	}
+
+	// 处理24小时统计
+	if avgResp24h, ok := stats24hData["avg_response_24h"]; ok && avgResp24h != nil {
+		for _, ts := range avgResp24h.Data.Result {
+			agentID := ts.Metric["agent_id"]
+			if agentID == "" {
+				continue
+			}
+			if _, exists := agentStatsMap[agentID]; !exists {
+				agentStatsMap[agentID] = &AgentMonitorStat{AgentID: agentID}
+			}
+
+			if len(ts.Values) > 0 {
+				lastValue := ts.Values[len(ts.Values)-1]
+				if len(lastValue) >= 2 {
+					valueStr, _ := lastValue[1].(string)
+					var value float64
+					fmt.Sscanf(valueStr, "%f", &value)
+					agentStatsMap[agentID].AvgResponse24h = int64(value)
+				}
+			}
+		}
+	}
+
+	if successCount24h, ok := stats24hData["success_count_24h"]; ok && successCount24h != nil {
+		for _, ts := range successCount24h.Data.Result {
+			agentID := ts.Metric["agent_id"]
+			if agentID == "" {
+				continue
+			}
+			if _, exists := agentStatsMap[agentID]; !exists {
+				agentStatsMap[agentID] = &AgentMonitorStat{AgentID: agentID}
+			}
+
+			if len(ts.Values) > 0 {
+				lastValue := ts.Values[len(ts.Values)-1]
+				if len(lastValue) >= 2 {
+					valueStr, _ := lastValue[1].(string)
+					var value float64
+					fmt.Sscanf(valueStr, "%f", &value)
+					agentStatsMap[agentID].SuccessChecks24h = int64(value)
+				}
+			}
+		}
+	}
+
+	if totalCount24h, ok := stats24hData["total_count_24h"]; ok && totalCount24h != nil {
+		for _, ts := range totalCount24h.Data.Result {
+			agentID := ts.Metric["agent_id"]
+			if agentID == "" {
+				continue
+			}
+			if _, exists := agentStatsMap[agentID]; !exists {
+				agentStatsMap[agentID] = &AgentMonitorStat{AgentID: agentID}
+			}
+
+			if len(ts.Values) > 0 {
+				lastValue := ts.Values[len(ts.Values)-1]
+				if len(lastValue) >= 2 {
+					valueStr, _ := lastValue[1].(string)
+					var value float64
+					fmt.Sscanf(valueStr, "%f", &value)
+					agentStatsMap[agentID].TotalChecks24h = int64(value)
+				}
+			}
+		}
+	}
+
+	// 处理7天统计
+	if successCount7d, ok := stats7dData["success_count_7d"]; ok && successCount7d != nil {
+		for _, ts := range successCount7d.Data.Result {
+			agentID := ts.Metric["agent_id"]
+			if agentID == "" {
+				continue
+			}
+			if _, exists := agentStatsMap[agentID]; !exists {
+				agentStatsMap[agentID] = &AgentMonitorStat{AgentID: agentID}
+			}
+
+			if len(ts.Values) > 0 {
+				lastValue := ts.Values[len(ts.Values)-1]
+				if len(lastValue) >= 2 {
+					valueStr, _ := lastValue[1].(string)
+					var value float64
+					fmt.Sscanf(valueStr, "%f", &value)
+					agentStatsMap[agentID].SuccessChecks7d = int64(value)
+				}
+			}
+		}
+	}
+
+	if totalCount7d, ok := stats7dData["total_count_7d"]; ok && totalCount7d != nil {
+		for _, ts := range totalCount7d.Data.Result {
+			agentID := ts.Metric["agent_id"]
+			if agentID == "" {
+				continue
+			}
+			if _, exists := agentStatsMap[agentID]; !exists {
+				agentStatsMap[agentID] = &AgentMonitorStat{AgentID: agentID}
+			}
+
+			if len(ts.Values) > 0 {
+				lastValue := ts.Values[len(ts.Values)-1]
+				if len(lastValue) >= 2 {
+					valueStr, _ := lastValue[1].(string)
+					var value float64
+					fmt.Sscanf(valueStr, "%f", &value)
+					agentStatsMap[agentID].TotalChecks7d = int64(value)
+				}
+			}
+		}
+	}
+
+	// 计算在线率
+	for _, stat := range agentStatsMap {
+		if stat.TotalChecks24h > 0 {
+			stat.Uptime24h = float64(stat.SuccessChecks24h) / float64(stat.TotalChecks24h) * 100
+		}
+		if stat.TotalChecks7d > 0 {
+			stat.Uptime7d = float64(stat.SuccessChecks7d) / float64(stat.TotalChecks7d) * 100
+		}
+	}
+
+	// 转换为数组
+	result := make([]AgentMonitorStat, 0, len(agentStatsMap))
+	for _, stat := range agentStatsMap {
+		result = append(result, *stat)
+	}
+
+	return result, nil
+}
+
+// GetMonitorHistory 获取监控任务的历史趋势数据
+func (s *MetricService) GetMonitorHistory(ctx context.Context, monitorID string, start, end int64) (*GetMetricsResponse, error) {
+	queries := s.buildMonitorPromQLQueries(monitorID, MonitorQueryTypeHistory)
+
+	var series []MetricSeries
+	for _, q := range queries {
+		result, err := s.vmClient.QueryRange(
+			ctx,
+			q.Query,
+			time.UnixMilli(start),
+			time.UnixMilli(end),
+			0, // 自动步长
+		)
+		if err != nil {
+			s.logger.Warn("查询历史趋势失败", zap.String("query", q.Name), zap.Error(err))
+			continue
+		}
+		convertedSeries := s.convertQueryResultToSeries(result, q.Name, q.Labels)
+		series = append(series, convertedSeries...)
+	}
+
+	return &GetMetricsResponse{
+		AgentID: "", // 监控查询不限定单个agent
+		Type:    "monitor",
+		Range:   fmt.Sprintf("%d-%d", start, end),
+		Series:  series,
+	}, nil
+}
+
+// GetLatestMonitorMetricsByType 获取指定类型的最新监控指标（用于告警检查）
+func (s *MetricService) GetLatestMonitorMetricsByType(ctx context.Context, monitorType string) ([]repo.MonitorMetric, error) {
+	// 查询最新的监控状态（按 monitor_type 过滤）
+	query := fmt.Sprintf(`pika_monitor_status{monitor_type="%s"}`, monitorType)
+	result, err := s.vmClient.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("query latest monitor metrics failed: %w", err)
+	}
+
+	metrics := make([]repo.MonitorMetric, 0)
+	for _, ts := range result.Data.Result {
+		metric := s.convertToMonitorMetric(ts)
+		metrics = append(metrics, metric)
+	}
+
+	return metrics, nil
+}
+
+// GetAllLatestMonitorMetrics 获取所有最新监控指标（用于告警检查）
+func (s *MetricService) GetAllLatestMonitorMetrics(ctx context.Context) ([]repo.MonitorMetric, error) {
+	// 查询所有最新的监控状态
+	query := `pika_monitor_status`
+	result, err := s.vmClient.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("query all latest monitor metrics failed: %w", err)
+	}
+
+	metrics := make([]repo.MonitorMetric, 0)
+	for _, ts := range result.Data.Result {
+		metric := s.convertToMonitorMetric(ts)
+		metrics = append(metrics, metric)
+	}
+
+	return metrics, nil
+}
+
+// convertToMonitorMetric 将 VictoriaMetrics 查询结果转换为 MonitorMetric
+func (s *MetricService) convertToMonitorMetric(ts vmclient.Result) repo.MonitorMetric {
+	metric := repo.MonitorMetric{
+		AgentId:   ts.Metric["agent_id"],
+		MonitorId: ts.Metric["monitor_id"],
+		Type:      ts.Metric["monitor_type"],
+		Target:    ts.Metric["target"],
+		Status:    ts.Metric["status"],
+	}
+
+	// 获取最新值（timestamp 和 status value）
+	if len(ts.Values) > 0 {
+		lastValue := ts.Values[len(ts.Values)-1]
+		if len(lastValue) >= 2 {
+			timestamp, _ := lastValue[0].(float64)
+			metric.Timestamp = int64(timestamp * 1000) // 转换为毫秒
+		}
+	}
+
+	// 查询其他相关指标（响应时间、状态码、证书信息等）
+	// 这里需要额外的查询来填充完整的 MonitorMetric 数据
+	ctx := context.Background()
+
+	// 查询响应时间
+	respQuery := fmt.Sprintf(`pika_monitor_response_time_ms{agent_id="%s",monitor_id="%s"}`, metric.AgentId, metric.MonitorId)
+	if respResult, err := s.vmClient.Query(ctx, respQuery); err == nil && len(respResult.Data.Result) > 0 {
+		ts := respResult.Data.Result[0]
+		if len(ts.Values) > 0 {
+			lastValue := ts.Values[len(ts.Values)-1]
+			if len(lastValue) >= 2 {
+				valueStr, _ := lastValue[1].(string)
+				var value float64
+				fmt.Sscanf(valueStr, "%f", &value)
+				metric.ResponseTime = int64(value)
+			}
+		}
+	}
+
+	// 查询状态码
+	statusCodeQuery := fmt.Sprintf(`pika_monitor_status_code{agent_id="%s",monitor_id="%s"}`, metric.AgentId, metric.MonitorId)
+	if statusCodeResult, err := s.vmClient.Query(ctx, statusCodeQuery); err == nil && len(statusCodeResult.Data.Result) > 0 {
+		ts := statusCodeResult.Data.Result[0]
+		if len(ts.Values) > 0 {
+			lastValue := ts.Values[len(ts.Values)-1]
+			if len(lastValue) >= 2 {
+				valueStr, _ := lastValue[1].(string)
+				var value float64
+				fmt.Sscanf(valueStr, "%f", &value)
+				metric.StatusCode = int(value)
+			}
+		}
+	}
+
+	// 查询证书信息
+	certExpiryQuery := fmt.Sprintf(`pika_monitor_cert_expiry_timestamp_ms{agent_id="%s",monitor_id="%s"}`, metric.AgentId, metric.MonitorId)
+	if certResult, err := s.vmClient.Query(ctx, certExpiryQuery); err == nil && len(certResult.Data.Result) > 0 {
+		ts := certResult.Data.Result[0]
+		if len(ts.Values) > 0 {
+			lastValue := ts.Values[len(ts.Values)-1]
+			if len(lastValue) >= 2 {
+				valueStr, _ := lastValue[1].(string)
+				var value float64
+				fmt.Sscanf(valueStr, "%f", &value)
+				metric.CertExpiryTime = int64(value)
+			}
+		}
+	}
+
+	certDaysQuery := fmt.Sprintf(`pika_monitor_cert_days_left{agent_id="%s",monitor_id="%s"}`, metric.AgentId, metric.MonitorId)
+	if certDaysResult, err := s.vmClient.Query(ctx, certDaysQuery); err == nil && len(certDaysResult.Data.Result) > 0 {
+		ts := certDaysResult.Data.Result[0]
+		if len(ts.Values) > 0 {
+			lastValue := ts.Values[len(ts.Values)-1]
+			if len(lastValue) >= 2 {
+				valueStr, _ := lastValue[1].(string)
+				var value float64
+				fmt.Sscanf(valueStr, "%f", &value)
+				metric.CertDaysLeft = int(value)
+			}
+		}
+	}
+
+	return metric
 }

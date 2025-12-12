@@ -18,19 +18,19 @@ type AlertService struct {
 	AlertRecordRepo *repo.AlertRecordRepo
 	AlertStateRepo  *repo.AlertStateRepo
 	agentRepo       *repo.AgentRepo
-	metricRepo      *repo.MetricRepo
+	metricService   *MetricService
 	propertyService *PropertyService
 	notifier        *Notifier
 	logger          *zap.Logger
 }
 
-func NewAlertService(logger *zap.Logger, db *gorm.DB, propertyService *PropertyService, notifier *Notifier) *AlertService {
+func NewAlertService(logger *zap.Logger, db *gorm.DB, propertyService *PropertyService, metricService *MetricService, notifier *Notifier) *AlertService {
 	return &AlertService{
 		Service:         orz.NewService(db),
 		AlertRecordRepo: repo.NewAlertRecordRepo(db),
 		AlertStateRepo:  repo.NewAlertStateRepo(db),
 		agentRepo:       repo.NewAgentRepo(db),
-		metricRepo:      repo.NewMetricRepo(db),
+		metricService:   metricService,
 		propertyService: propertyService,
 		notifier:        notifier,
 		logger:          logger,
@@ -373,7 +373,7 @@ func (s *AlertService) CheckMonitorAlerts(ctx context.Context) error {
 func (s *AlertService) checkCertificateAlerts(ctx context.Context, config *models.AlertConfig, now int64) error {
 	// 获取所有最新的监控指标（仅HTTPS类型）
 	// 这里需要查询最新的 monitor_metrics 记录，获取证书剩余天数
-	monitors, err := s.metricRepo.GetLatestMonitorMetricsByType(ctx, "http")
+	monitors, err := s.metricService.GetLatestMonitorMetricsByType(ctx, "http")
 	if err != nil {
 		return err
 	}
@@ -396,10 +396,10 @@ func (s *AlertService) checkCertificateAlerts(ctx context.Context, config *model
 		// 检查证书剩余天数是否低于阈值
 		if certDaysLeft <= config.Rules.CertThreshold && certDaysLeft >= 0 {
 			// 触发告警（证书告警不需要持续时间，直接触发）
-			s.checkCertAlert(ctx, config, &agent, monitor, certDaysLeft, now)
+			s.checkCertAlert(ctx, config, &agent, &monitor, certDaysLeft, now)
 		} else {
 			// 恢复告警（如果之前触发过）
-			s.resolveCertAlert(ctx, config, &agent, monitor, certDaysLeft)
+			s.resolveCertAlert(ctx, config, &agent, &monitor, certDaysLeft)
 		}
 	}
 
@@ -536,7 +536,7 @@ func (s *AlertService) calculateCertLevel(daysLeft float64) string {
 // checkServiceDownAlerts 检查服务下线告警
 func (s *AlertService) checkServiceDownAlerts(ctx context.Context, config *models.AlertConfig, now int64) error {
 	// 获取所有最新的监控指标
-	monitors, err := s.metricRepo.GetAllLatestMonitorMetrics(ctx)
+	monitors, err := s.metricService.GetAllLatestMonitorMetrics(ctx)
 	if err != nil {
 		return err
 	}
@@ -591,11 +591,11 @@ func (s *AlertService) checkServiceDownAlerts(ctx context.Context, config *model
 		}
 
 		if shouldFire {
-			s.fireServiceDownAlert(ctx, config, &agent, monitor, state, now)
+			s.fireServiceDownAlert(ctx, config, &agent, &monitor, state, now)
 		}
 
 		if shouldResolve {
-			s.resolveServiceDownAlert(ctx, config, &agent, monitor, state)
+			s.resolveServiceDownAlert(ctx, config, &agent, &monitor, state)
 		}
 	}
 

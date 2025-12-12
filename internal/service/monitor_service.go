@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -13,7 +14,6 @@ import (
 	ws "github.com/dushixiang/pika/internal/websocket"
 	"github.com/go-orz/cache"
 	"github.com/go-orz/orz"
-	"github.com/go-orz/toolkit"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"gorm.io/datatypes"
@@ -24,16 +24,13 @@ type MonitorService struct {
 	logger *zap.Logger
 	*repo.MonitorRepo
 	*orz.Service
-	agentRepo        *repo.AgentRepo
-	metricRepo       *repo.MetricRepo
-	metricService    *MetricService
-	monitorStatsRepo *repo.MonitorStatsRepo
-	wsManager        *ws.Manager
+	agentRepo     *repo.AgentRepo
+	metricRepo    *repo.MetricRepo
+	metricService *MetricService
+	wsManager     *ws.Manager
 
 	// 监控概览缓存：缓存监控任务列表（使用不同的 key 区分 public 和 private）
 	overviewCache cache.Cache[string, []PublicMonitorOverview]
-	// 监控统计缓存：缓存单个监控任务的统计数据
-	statsCache cache.Cache[string, []models.MonitorStats]
 
 	// 调度器引用（用于动态管理任务）
 	scheduler MonitorScheduler
@@ -48,18 +45,16 @@ type MonitorScheduler interface {
 
 func NewMonitorService(logger *zap.Logger, db *gorm.DB, metricService *MetricService, wsManager *ws.Manager) *MonitorService {
 	return &MonitorService{
-		logger:           logger,
-		Service:          orz.NewService(db),
-		MonitorRepo:      repo.NewMonitorRepo(db),
-		agentRepo:        repo.NewAgentRepo(db),
-		metricRepo:       repo.NewMetricRepo(db),
-		metricService:    metricService,
-		monitorStatsRepo: repo.NewMonitorStatsRepo(db),
-		wsManager:        wsManager,
+		logger:        logger,
+		Service:       orz.NewService(db),
+		MonitorRepo:   repo.NewMonitorRepo(db),
+		agentRepo:     repo.NewAgentRepo(db),
+		metricRepo:    repo.NewMetricRepo(db),
+		metricService: metricService,
+		wsManager:     wsManager,
 
 		// 缓存 5 分钟，避免频繁查询
 		overviewCache: cache.New[string, []PublicMonitorOverview](5 * time.Minute),
-		statsCache:    cache.New[string, []models.MonitorStats](5 * time.Minute),
 	}
 }
 
@@ -229,12 +224,6 @@ func (s *MonitorService) DeleteMonitor(ctx context.Context, id string) error {
 			return err
 		}
 
-		// 删除监控统计数据
-		if err := s.monitorStatsRepo.DeleteByMonitorId(ctx, id); err != nil {
-			s.logger.Error("删除监控统计数据失败", zap.String("monitorId", id), zap.Error(err))
-			return err
-		}
-
 		// 删除监控指标数据（从 VictoriaMetrics）
 		if err := s.metricService.DeleteMonitorMetrics(ctx, id); err != nil {
 			s.logger.Error("删除监控指标数据失败", zap.String("monitorId", id), zap.Error(err))
@@ -286,29 +275,32 @@ func (s *MonitorService) ListByAuth(ctx context.Context, isAuthenticated bool) (
 		return emptyResult, nil
 	}
 
-	// 提取监控任务ID列表
-	monitorIds := make([]string, 0, len(monitors))
-	for _, monitor := range monitors {
-		monitorIds = append(monitorIds, monitor.ID)
-	}
-
-	// 批量获取统计数据（已经由后台任务预计算好）
-	statsList, err := s.monitorStatsRepo.FindByMonitorIdIn(ctx, monitorIds)
-	if err != nil {
-		return nil, err
-	}
-
-	// 按监控任务ID分组统计数据
-	statsMap := make(map[string][]models.MonitorStats, len(monitors))
-	for _, stats := range statsList {
-		statsMap[stats.MonitorId] = append(statsMap[stats.MonitorId], stats)
-	}
-
 	// 构建监控概览列表
 	items := make([]PublicMonitorOverview, 0, len(monitors))
 	for _, monitor := range monitors {
-		// 直接聚合预计算的统计数据
-		summary := aggregateMonitorStats(statsMap[monitor.ID])
+		// 从 VictoriaMetrics 查询统计数据
+		stats, err := s.metricService.GetMonitorStats(ctx, monitor.ID)
+		if err != nil {
+			// 查询失败时使用默认值
+			s.logger.Error("查询 VictoriaMetrics 失败",
+				zap.String("monitorID", monitor.ID),
+				zap.Error(err))
+			stats = &MonitorStatsResult{}
+		}
+
+		// 将 MonitorStatsResult 转换为 monitorOverviewSummary
+		summary := monitorOverviewSummary{
+			AgentCount:      stats.AgentCount,
+			CurrentResponse: stats.CurrentResponse,
+			AvgResponse24h:  stats.AvgResponse24h,
+			Uptime24h:       stats.Uptime24h,
+			Uptime7d:        stats.Uptime7d,
+			LastCheckStatus: stats.LastCheckStatus,
+			LastCheckError:  stats.LastCheckError,
+			LastCheckTime:   stats.LastCheckTime,
+			CertExpiryDate:  stats.CertExpiryDate,
+			CertExpiryDays:  stats.CertExpiryDays,
+		}
 
 		// 构建监控概览对象
 		item := s.buildMonitorOverview(monitor, summary)
@@ -363,88 +355,6 @@ type monitorOverviewSummary struct {
 	CertExpiryDate  int64
 	CertExpiryDays  int
 	LastCheckTime   int64
-}
-
-func aggregateMonitorStats(stats []models.MonitorStats) monitorOverviewSummary {
-	summary := monitorOverviewSummary{
-		LastCheckStatus: "unknown",
-	}
-
-	if len(stats) == 0 {
-		return summary
-	}
-
-	var totalCurrentResponse int64
-	var totalAvgResponse24h int64
-	var totalUptime24h float64
-	var totalUptime7d float64
-	var lastCheckTime int64
-	var lastCheckError string
-	var certExpiryDate int64
-	var certExpiryDays int
-	hasCert := false
-	hasUp := false
-	hasDown := false
-
-	for _, stat := range stats {
-		totalCurrentResponse += stat.CurrentResponse
-		totalAvgResponse24h += stat.AvgResponse24h
-		totalUptime24h += stat.Uptime24h
-		totalUptime7d += stat.Uptime7d
-
-		// 记录最新的检测时间和对应的错误信息
-		if stat.LastCheckTime > lastCheckTime {
-			lastCheckTime = stat.LastCheckTime
-			// 如果这是最新的检测且状态为 down，记录错误信息
-			if stat.LastCheckStatus == "down" {
-				lastCheckError = stat.LastCheckError
-			} else {
-				lastCheckError = ""
-			}
-		}
-
-		switch stat.LastCheckStatus {
-		case "up":
-			hasUp = true
-		case "down":
-			hasDown = true
-		}
-
-		if stat.CertExpiryDate > 0 {
-			if !hasCert || stat.CertExpiryDate < certExpiryDate {
-				certExpiryDate = stat.CertExpiryDate
-				certExpiryDays = stat.CertExpiryDays
-				hasCert = true
-			}
-		}
-	}
-
-	count := len(stats)
-	summary.AgentCount = count
-	if count > 0 {
-		summary.CurrentResponse = totalCurrentResponse / int64(count)
-		summary.AvgResponse24h = totalAvgResponse24h / int64(count)
-		summary.Uptime24h = totalUptime24h / float64(count)
-		summary.Uptime7d = totalUptime7d / float64(count)
-	}
-	summary.LastCheckTime = lastCheckTime
-	summary.LastCheckError = lastCheckError
-
-	switch {
-	case hasUp:
-		summary.LastCheckStatus = "up"
-	case hasDown:
-		summary.LastCheckStatus = "down"
-	default:
-		summary.LastCheckStatus = "unknown"
-	}
-
-	if hasCert {
-		summary.CertExpiryDate = certExpiryDate
-		summary.CertExpiryDays = certExpiryDays
-	}
-
-	return summary
 }
 
 func cloneAgentIDs(ids datatypes.JSONSlice[string]) []string {
@@ -596,140 +506,6 @@ func (s *MonitorService) SendMonitorTaskToAgents(ctx context.Context, monitor mo
 	return nil
 }
 
-// CalculateMonitorStats 计算监控统计数据
-func (s *MonitorService) CalculateMonitorStats(ctx context.Context) error {
-	now := time.Now()
-
-	// 获取所有启用的监控任务
-	monitors, err := s.MonitorRepo.FindByEnabled(ctx, true)
-	if err != nil {
-		return err
-	}
-
-	// 获取所有探针（包括在线和离线）
-	agents, err := s.agentRepo.FindAll(ctx)
-	if err != nil {
-		return err
-	}
-
-	// 收集所有有效的监控任务ID
-	validStatsIDs := make(map[string]bool)
-
-	// 为每个监控任务的每个探针计算统计数据
-	for _, monitor := range monitors {
-		// 使用统一的方法计算目标探针
-		targetAgents := s.resolveTargetAgents(monitor, agents)
-
-		for _, agent := range targetAgents {
-			stats, err := s.calculateStatsForAgentMonitor(ctx, agent.ID, monitor.ID, monitor.Type, monitor.Target, now)
-			if err != nil {
-				s.logger.Error("计算监控统计失败",
-					zap.String("agentID", agent.ID),
-					zap.String("monitorName", monitor.Name),
-					zap.Error(err))
-				continue
-			}
-
-			// 记录有效的监控任务ID
-			validStatsIDs[stats.ID] = true
-
-			if err := s.monitorStatsRepo.Save(ctx, stats); err != nil {
-				s.logger.Error("保存监控统计失败",
-					zap.String("agentID", agent.ID),
-					zap.String("monitorName", monitor.Name),
-					zap.Error(err))
-			}
-		}
-	}
-
-	// 清理无效监控任务的统计数据
-	if err := s.cleanupInvalidStats(ctx, validStatsIDs); err != nil {
-		s.logger.Error("清理无效统计数据失败", zap.Error(err))
-		// 不返回错误，继续运行
-	}
-
-	return nil
-}
-
-// calculateStatsForAgentMonitor 计算单个探针单个监控任务的统计数据
-func (s *MonitorService) calculateStatsForAgentMonitor(ctx context.Context, agentID, monitorId, monitorType, target string, now time.Time) (*models.MonitorStats, error) {
-	stats := &models.MonitorStats{
-		ID:          toolkit.Sign("monitor_stats", agentID, monitorId, monitorType, target),
-		AgentID:     agentID,
-		MonitorId:   monitorId,
-		MonitorType: monitorType,
-		Target:      target,
-	}
-
-	// 计算24小时数据
-	start24h := now.Add(-24 * time.Hour).UnixMilli()
-	end := now.UnixMilli()
-	metrics24h, err := s.metricRepo.GetMonitorMetrics(ctx, agentID, monitorId, start24h, end)
-	if err != nil {
-		return nil, err
-	}
-
-	// 计算7天数据
-	start7d := now.Add(-7 * 24 * time.Hour).UnixMilli()
-	metrics7d, err := s.metricRepo.GetMonitorMetrics(ctx, agentID, monitorId, start7d, end)
-	if err != nil {
-		return nil, err
-	}
-
-	// 计算24小时统计
-	if len(metrics24h) > 0 {
-		var totalResponse int64
-		var successCount int64
-		lastMetric := metrics24h[len(metrics24h)-1]
-
-		for _, metric := range metrics24h {
-			if metric.Status == "up" {
-				successCount++
-				totalResponse += metric.ResponseTime
-			}
-		}
-
-		stats.TotalChecks24h = int64(len(metrics24h))
-		stats.SuccessChecks24h = successCount
-		if successCount > 0 {
-			stats.AvgResponse24h = totalResponse / successCount
-		}
-		if stats.TotalChecks24h > 0 {
-			stats.Uptime24h = float64(successCount) / float64(stats.TotalChecks24h) * 100
-		}
-
-		// 最后一次检测数据
-		stats.CurrentResponse = lastMetric.ResponseTime
-		stats.LastCheckTime = lastMetric.Timestamp
-		stats.LastCheckStatus = lastMetric.Status
-		stats.LastCheckError = lastMetric.Error
-
-		// 从最新的检测结果中获取证书信息
-		if lastMetric.CertExpiryTime > 0 {
-			stats.CertExpiryDate = lastMetric.CertExpiryTime
-			stats.CertExpiryDays = lastMetric.CertDaysLeft
-		}
-	}
-
-	// 计算7天统计
-	if len(metrics7d) > 0 {
-		var successCount int64
-		for _, metric := range metrics7d {
-			if metric.Status == "up" {
-				successCount++
-			}
-		}
-
-		stats.TotalChecks7d = int64(len(metrics7d))
-		stats.SuccessChecks7d = successCount
-		if stats.TotalChecks7d > 0 {
-			stats.Uptime7d = float64(successCount) / float64(stats.TotalChecks7d) * 100
-		}
-	}
-
-	return stats, nil
-}
-
 // GetMonitorStatsByID 获取监控任务的统计数据（聚合后的单个监控详情）
 func (s *MonitorService) GetMonitorStatsByID(ctx context.Context, monitorID string) (*PublicMonitorOverview, error) {
 	// 查询监控任务
@@ -738,14 +514,27 @@ func (s *MonitorService) GetMonitorStatsByID(ctx context.Context, monitorID stri
 		return nil, err
 	}
 
-	// 获取统计数据
-	statsList, err := s.monitorStatsRepo.FindByMonitorId(ctx, monitor.ID)
+	// 从 VictoriaMetrics 查询统计数据
+	stats, err := s.metricService.GetMonitorStats(ctx, monitorID)
 	if err != nil {
-		return nil, err
+		s.logger.Error("查询 VictoriaMetrics 失败", zap.String("monitorID", monitorID), zap.Error(err))
+		// 失败时返回默认值，不中断
+		stats = &MonitorStatsResult{}
 	}
 
-	// 聚合统计数据
-	summary := aggregateMonitorStats(statsList)
+	// 转换为 monitorOverviewSummary 格式
+	summary := monitorOverviewSummary{
+		AgentCount:      stats.AgentCount,
+		LastCheckStatus: stats.LastCheckStatus,
+		LastCheckError:  stats.LastCheckError,
+		CurrentResponse: stats.CurrentResponse,
+		AvgResponse24h:  stats.AvgResponse24h,
+		Uptime24h:       stats.Uptime24h,
+		Uptime7d:        stats.Uptime7d,
+		CertExpiryDate:  stats.CertExpiryDate,
+		CertExpiryDays:  stats.CertExpiryDays,
+		LastCheckTime:   stats.LastCheckTime,
+	}
 
 	// 构建监控概览对象
 	overview := s.buildMonitorOverview(monitor, summary)
@@ -753,121 +542,198 @@ func (s *MonitorService) GetMonitorStatsByID(ctx context.Context, monitorID stri
 	return &overview, nil
 }
 
+type MonitorStats struct {
+	ID               string  `gorm:"primaryKey" json:"id"`                  // ID
+	AgentID          string  `json:"agentId"`                               // 探针ID
+	AgentName        string  `gorm:"-" json:"agentName,omitempty"`          // 探针名称（不存储在数据库，仅用于 API 返回）
+	MonitorId        string  `json:"monitorId"`                             // 监控项ID
+	MonitorName      string  `gorm:"-" json:"name"`                         // 监控项名称（不存储在数据库，仅用于 API 返回）
+	MonitorType      string  `json:"type"`                                  // 监控类型
+	Target           string  `json:"target"`                                // 目标地址
+	CurrentResponse  int64   `json:"currentResponse"`                       // 当前响应时间(ms)
+	AvgResponse24h   int64   `json:"avgResponse24h"`                        // 24小时平均响应时间(ms)
+	Uptime24h        float64 `json:"uptime24h"`                             // 24小时在线率(百分比)
+	Uptime7d         float64 `json:"uptime7d"`                              // 7天在线率(百分比)
+	CertExpiryDate   int64   `json:"certExpiryDate"`                        // 证书过期时间(毫秒时间戳)，0表示无证书
+	CertExpiryDays   int     `json:"certExpiryDays"`                        // 证书剩余天数
+	TotalChecks24h   int64   `json:"totalChecks24h"`                        // 24小时总检测次数
+	SuccessChecks24h int64   `json:"successChecks24h"`                      // 24小时成功次数
+	TotalChecks7d    int64   `json:"totalChecks7d"`                         // 7天总检测次数
+	SuccessChecks7d  int64   `json:"successChecks7d"`                       // 7天成功次数
+	LastCheckTime    int64   `json:"lastCheckTime"`                         // 最后检测时间
+	LastCheckStatus  string  `json:"lastCheckStatus"`                       // 最后检测状态: up/down
+	LastCheckError   string  `json:"lastCheckError"`                        // 最后检测错误信息
+	UpdatedAt        int64   `gorm:"autoUpdateTime:milli" json:"updatedAt"` // 更新时间
+}
+
 // GetMonitorAgentStats 获取监控任务各探针的统计数据（详细列表）
-func (s *MonitorService) GetMonitorAgentStats(ctx context.Context, monitorID string) ([]models.MonitorStats, error) {
-	// 构建缓存键
-	cacheKey := fmt.Sprintf("agents:%s", monitorID)
-
-	// 尝试从缓存获取
-	if cachedResult, ok := s.statsCache.Get(cacheKey); ok {
-		return cachedResult, nil
-	}
-
-	// 缓存未命中，查询数据库
+func (s *MonitorService) GetMonitorAgentStats(ctx context.Context, monitorID string) ([]MonitorStats, error) {
+	// 查询监控任务
 	monitor, err := s.MonitorRepo.FindById(ctx, monitorID)
 	if err != nil {
 		return nil, err
 	}
 
-	statsList, err := s.monitorStatsRepo.FindByMonitorId(ctx, monitor.ID)
+	// 从 VictoriaMetrics 查询各探针统计
+	agentStats, err := s.metricService.GetMonitorAgentStats(ctx, monitorID)
 	if err != nil {
+		s.logger.Error("查询 VictoriaMetrics 失败", zap.String("monitorID", monitorID), zap.Error(err))
 		return nil, err
 	}
 
-	// 获取探针列表
-	agents, err := s.agentRepo.FindAll(ctx)
-	if err != nil {
-		return nil, err
-	}
-	// 当前监控任务的关联的探针
-	targetAgents := s.resolveTargetAgents(monitor, agents)
-	var targetAgentsMap = make(map[string]string)
-	for _, agent := range targetAgents {
-		targetAgentsMap[agent.ID] = agent.Name
+	// 填充探针名称、监控名称
+	agentMap := make(map[string]*models.Agent)
+	if len(agentStats) > 0 {
+		agentIDs := make([]string, 0, len(agentStats))
+		for _, stat := range agentStats {
+			agentIDs = append(agentIDs, stat.AgentID)
+		}
+		agents, _ := s.agentRepo.FindByIdIn(ctx, agentIDs)
+		for _, agent := range agents {
+			agentMap[agent.ID] = &agent
+		}
 	}
 
-	// 填充监控名称、探针名称和隐私设置
-	var filteredStatsList []models.MonitorStats
-	for _, stats := range statsList {
-		agentName, ok := targetAgentsMap[stats.AgentID]
-		if !ok {
-			continue
+	// 确定目标 target 值（是否隐藏）
+	target := monitor.Target
+	if !monitor.ShowTargetPublic {
+		target = "******"
+	}
+
+	// 转换为 MonitorStats 格式
+	result := make([]MonitorStats, 0, len(agentStats))
+	for _, stat := range agentStats {
+		ms := MonitorStats{
+			AgentID:          stat.AgentID,
+			AgentName:        "",
+			MonitorId:        monitorID,
+			MonitorName:      monitor.Name,
+			MonitorType:      monitor.Type,
+			Target:           target,
+			CurrentResponse:  stat.CurrentResponse,
+			AvgResponse24h:   stat.AvgResponse24h,
+			Uptime24h:        stat.Uptime24h,
+			Uptime7d:         stat.Uptime7d,
+			CertExpiryDate:   stat.CertExpiryDate,
+			CertExpiryDays:   stat.CertExpiryDays,
+			TotalChecks24h:   stat.TotalChecks24h,
+			SuccessChecks24h: stat.SuccessChecks24h,
+			TotalChecks7d:    stat.TotalChecks7d,
+			SuccessChecks7d:  stat.SuccessChecks7d,
+			LastCheckTime:    stat.LastCheckTime,
+			LastCheckStatus:  stat.LastCheckStatus,
+			LastCheckError:   stat.LastCheckError,
 		}
 
-		stats.MonitorName = monitor.Name
-
-		// 根据 ShowTargetPublic 字段决定是否隐藏 Target
-		if !monitor.ShowTargetPublic {
-			stats.Target = "******"
+		if agent, ok := agentMap[stat.AgentID]; ok {
+			ms.AgentName = agent.Name
 		}
 
-		stats.AgentName = agentName
-		filteredStatsList = append(filteredStatsList, stats)
+		result = append(result, ms)
 	}
 
-	// 缓存结果
-	s.statsCache.Set(cacheKey, filteredStatsList, 5*time.Minute)
-
-	return filteredStatsList, nil
+	return result, nil
 }
 
 // GetMonitorHistory 获取监控任务的历史响应时间数据
 // 根据前端时间范围选择，直接使用聚合表数据
 // 支持时间范围：15m, 30m, 1h, 3h, 6h, 12h, 1d, 3d, 7d
 func (s *MonitorService) GetMonitorHistory(ctx context.Context, monitorID, timeRange string) ([]repo.AggregatedMonitorMetric, error) {
-	monitor, err := s.MonitorRepo.FindById(ctx, monitorID)
-	if err != nil {
+	// 验证监控任务存在
+	if _, err := s.MonitorRepo.FindById(ctx, monitorID); err != nil {
 		return nil, err
 	}
 
-	// 根据前端时间范围，选择最优的聚合粒度
+	// 计算时间范围
 	var duration time.Duration
-	var bucketSeconds int // 使用的聚合 bucket（秒）
-
 	switch timeRange {
 	case "15m":
 		duration = 15 * time.Minute
-		bucketSeconds = 60 // 1分钟聚合，约15个点
 	case "30m":
 		duration = 30 * time.Minute
-		bucketSeconds = 60 // 1分钟聚合，约30个点
 	case "1h":
 		duration = 1 * time.Hour
-		bucketSeconds = 300 // 5分钟聚合，约12个点
 	case "3h":
 		duration = 3 * time.Hour
-		bucketSeconds = 300 // 5分钟聚合，约36个点
 	case "6h":
 		duration = 6 * time.Hour
-		bucketSeconds = 900 // 15分钟聚合，约24个点
 	case "12h":
 		duration = 12 * time.Hour
-		bucketSeconds = 900 // 15分钟聚合，约48个点
 	case "1d", "24h":
 		duration = 24 * time.Hour
-		bucketSeconds = 1800 // 30分钟聚合，约48个点
 	case "3d":
 		duration = 3 * 24 * time.Hour
-		bucketSeconds = 3600 // 1小时聚合，约72个点
 	case "7d":
 		duration = 7 * 24 * time.Hour
-		bucketSeconds = 7200 // 2小时聚合，约84个点
 	default:
-		// 默认 15 分钟
 		duration = 15 * time.Minute
-		bucketSeconds = 60
 	}
 
 	now := time.Now()
 	end := now.UnixMilli()
 	start := now.Add(-duration).UnixMilli()
 
-	// 对齐时间范围到 bucket 边界
-	bucketMs := int64(bucketSeconds * 1000)
-	start, end = alignTimeRangeToBucket(start, end, bucketMs)
+	// 从 VictoriaMetrics 查询历史数据
+	metricsResp, err := s.metricService.GetMonitorHistory(ctx, monitorID, start, end)
+	if err != nil {
+		s.logger.Error("查询 VictoriaMetrics 失败", zap.String("monitorID", monitorID), zap.Error(err))
+		return []repo.AggregatedMonitorMetric{}, nil
+	}
 
-	// 直接使用聚合表查询
-	return s.metricRepo.GetMonitorMetricsAgg(ctx, monitor.ID, start, end, bucketSeconds)
+	// 转换为 AggregatedMonitorMetric 格式
+	result := make([]repo.AggregatedMonitorMetric, 0)
+
+	// 按时间戳分组，聚合多个探针的数据
+	timestampMap := make(map[int64]map[string]float64) // timestamp -> agentID -> avgResponse
+
+	for _, series := range metricsResp.Series {
+		// 从 series.Labels 中提取 agent_id
+		agentID := ""
+		if series.Labels != nil {
+			agentID = series.Labels["agent_id"]
+		}
+		if agentID == "" && len(metricsResp.Series) > 0 {
+			// 如果没有 agent_id 标签，尝试从 series name 中提取
+			// 这是 response_time 系列，每个探针一条时间序列
+			// series.Name 可能包含探针信息
+			agentID = series.Name
+		}
+
+		for _, dataPoint := range series.Data {
+			if timestampMap[dataPoint.Timestamp] == nil {
+				timestampMap[dataPoint.Timestamp] = make(map[string]float64)
+			}
+			timestampMap[dataPoint.Timestamp][agentID] = dataPoint.Value
+		}
+	}
+
+	// 将 map 转换为数组，并计算每个时间点的聚合数据
+	for timestamp, agentData := range timestampMap {
+		var totalResponse float64
+		var count int
+		for _, avgResp := range agentData {
+			totalResponse += avgResp
+			count++
+		}
+
+		var avgResponse float64
+		if count > 0 {
+			avgResponse = totalResponse / float64(count)
+		}
+
+		result = append(result, repo.AggregatedMonitorMetric{
+			Timestamp:   timestamp,
+			AgentID:     "", // 聚合数据不指定单个 agentID
+			AvgResponse: avgResponse,
+		})
+	}
+
+	// 按时间戳排序
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Timestamp < result[j].Timestamp
+	})
+
+	return result, nil
 }
 
 // GetMonitorByAuth 根据认证状态获取监控任务（已登录返回全部，未登录返回公开可见）
@@ -897,37 +763,4 @@ func (s *MonitorService) clearCache(monitorID string) {
 	// 清理概览缓存
 	s.overviewCache.Delete("overview:public")
 	s.overviewCache.Delete("overview:private")
-
-	// 清理统计缓存
-	s.statsCache.Delete(fmt.Sprintf("agents:%s", monitorID))
-}
-
-// cleanupInvalidStats 按监控任务维度清理无效的统计数据
-// 删除不在有效监控任务列表中的所有统计数据（监控任务被禁用或删除）
-func (s *MonitorService) cleanupInvalidStats(ctx context.Context, validStatsIDs map[string]bool) error {
-	// 获取所有现有的统计数据
-	allStats, err := s.monitorStatsRepo.FindAll(ctx)
-	if err != nil {
-		return err
-	}
-
-	// 收集需要删除的统计数据ID
-	idsToDelete := make([]string, 0)
-	for _, stats := range allStats {
-		// 如果该统计数据对应的监控任务不在有效列表中，删除该统计数据
-		if !validStatsIDs[stats.ID] {
-			idsToDelete = append(idsToDelete, stats.ID)
-		}
-	}
-
-	// 批量删除无效的统计数据
-	if len(idsToDelete) > 0 {
-		s.logger.Info("清理无效的监控统计数据",
-			zap.Int("count", len(idsToDelete)))
-		if err := s.monitorStatsRepo.DeleteByIDs(ctx, idsToDelete); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }

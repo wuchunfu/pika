@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dushixiang/pika/internal/metric"
 	"github.com/dushixiang/pika/internal/models"
 	"github.com/dushixiang/pika/internal/protocol"
 	"github.com/dushixiang/pika/internal/repo"
@@ -264,7 +265,7 @@ func (s *MonitorService) ListByAuth(ctx context.Context, isAuthenticated bool) (
 	}
 
 	if len(monitors) == 0 {
-		emptyResult := []PublicMonitorOverview{}
+		var emptyResult []PublicMonitorOverview
 		// 缓存空结果
 		s.overviewCache.Set(cacheKey, emptyResult, 5*time.Minute)
 		return emptyResult, nil
@@ -280,7 +281,7 @@ func (s *MonitorService) ListByAuth(ctx context.Context, isAuthenticated bool) (
 			s.logger.Error("查询 VictoriaMetrics 失败",
 				zap.String("monitorID", monitor.ID),
 				zap.Error(err))
-			stats = &MonitorStatsResult{}
+			stats = &metric.MonitorStatsResult{}
 		}
 
 		// 将 MonitorStatsResult 转换为 monitorOverviewSummary
@@ -495,7 +496,7 @@ func (s *MonitorService) GetMonitorStatsByID(ctx context.Context, monitorID stri
 	if err != nil {
 		s.logger.Error("查询 VictoriaMetrics 失败", zap.String("monitorID", monitorID), zap.Error(err))
 		// 失败时返回默认值，不中断
-		stats = &MonitorStatsResult{}
+		stats = &metric.MonitorStatsResult{}
 	}
 
 	// 转换为 monitorOverviewSummary 格式
@@ -516,7 +517,7 @@ func (s *MonitorService) GetMonitorStatsByID(ctx context.Context, monitorID stri
 
 // GetMonitorAgentStats 获取监控任务各探针的统计数据（详细列表）
 // 直接返回 VictoriaMetrics 查询结果，无需额外转换
-func (s *MonitorService) GetMonitorAgentStats(ctx context.Context, monitorID string) ([]AgentMonitorStat, error) {
+func (s *MonitorService) GetMonitorAgentStats(ctx context.Context, monitorID string) ([]protocol.MonitorData, bool) {
 	// 直接返回 VictoriaMetrics 查询结果
 	return s.metricService.GetMonitorAgentStats(ctx, monitorID)
 }
@@ -524,7 +525,7 @@ func (s *MonitorService) GetMonitorAgentStats(ctx context.Context, monitorID str
 // GetMonitorHistory 获取监控任务的历史时序数据
 // 直接返回 VictoriaMetrics 的原始时序数据，包含所有探针的独立序列
 // 支持时间范围：15m, 30m, 1h, 3h, 6h, 12h, 1d, 3d, 7d
-func (s *MonitorService) GetMonitorHistory(ctx context.Context, monitorID, timeRange string) (*GetMetricsResponse, error) {
+func (s *MonitorService) GetMonitorHistory(ctx context.Context, monitorID, timeRange string) (*metric.GetMetricsResponse, error) {
 	// 计算时间范围
 	var duration time.Duration
 	switch timeRange {
@@ -585,4 +586,43 @@ func (s *MonitorService) clearCache(monitorID string) {
 	// 清理概览缓存
 	s.overviewCache.Delete("overview:public")
 	s.overviewCache.Delete("overview:private")
+}
+
+// GetLatestMonitorMetricsByType 获取指定类型的最新监控指标（用于告警检查）
+func (s *MonitorService) GetLatestMonitorMetricsByType(ctx context.Context, monitorType string) ([]protocol.MonitorData, error) {
+	// 查询数据库
+	monitorTasks, err := s.FindByEnabledAndType(ctx, true, monitorType)
+	if err != nil {
+		return nil, err
+	}
+
+	// 在缓存中查询最新的监控数据
+	var result []protocol.MonitorData
+	for _, task := range monitorTasks {
+		monitorData, ok := s.metricService.GetMonitorAgentStats(ctx, task.ID)
+		if ok {
+			result = append(result, monitorData...)
+		}
+	}
+
+	return result, nil
+}
+
+// GetAllLatestMonitorMetrics 获取所有最新监控指标（用于告警检查）
+func (s *MonitorService) GetAllLatestMonitorMetrics(ctx context.Context) ([]protocol.MonitorData, error) {
+	// 查询所有最新的监控状态
+	monitorTasks, err := s.FindByEnabled(ctx, true)
+	if err != nil {
+		return nil, err
+	}
+
+	// 在缓存中查询最新的监控数据
+	var result []protocol.MonitorData
+	for _, task := range monitorTasks {
+		monitorData, ok := s.metricService.GetMonitorAgentStats(ctx, task.ID)
+		if ok {
+			result = append(result, monitorData...)
+		}
+	}
+	return result, nil
 }

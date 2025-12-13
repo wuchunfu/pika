@@ -96,35 +96,11 @@ func (s *MetricService) convertToMetrics(agentID string, metricType string, data
 		monitorDataList := data.([]protocol.MonitorData)
 		for _, monitorData := range monitorDataList {
 			labels := map[string]string{
-				"monitor_id":   monitorData.ID,
+				"monitor_id":   monitorData.MonitorId,
 				"monitor_type": monitorData.Type,
 				"target":       monitorData.Target,
 			}
 			metrics = append(metrics, createMetric("pika_monitor_response_time_ms", agentID, labels, float64(monitorData.ResponseTime), timestamp))
-
-			// 状态: up=1, down=0
-			statusValue := 0.0
-			if monitorData.Status == "up" {
-				statusValue = 1.0
-			}
-			statusLabels := map[string]string{
-				"monitor_id":   monitorData.ID,
-				"monitor_type": monitorData.Type,
-				"target":       monitorData.Target,
-				"status":       monitorData.Status,
-			}
-			metrics = append(metrics, createMetric("pika_monitor_status", agentID, statusLabels, statusValue, timestamp))
-
-			// 状态码
-			if monitorData.StatusCode > 0 {
-				metrics = append(metrics, createMetric("pika_monitor_status_code", agentID, labels, float64(monitorData.StatusCode), timestamp))
-			}
-
-			// 证书信息
-			if monitorData.CertExpiryTime > 0 {
-				metrics = append(metrics, createMetric("pika_monitor_cert_expiry_timestamp_ms", agentID, labels, float64(monitorData.CertExpiryTime), timestamp))
-				metrics = append(metrics, createMetric("pika_monitor_cert_days_left", agentID, labels, float64(monitorData.CertDaysLeft), timestamp))
-			}
 		}
 	}
 

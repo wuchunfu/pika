@@ -68,3 +68,14 @@ func (r *MonitorRepo) FindByEnabled(ctx context.Context, enabled bool) ([]models
 	}
 	return monitors, nil
 }
+
+// FindByEnabledAndType 查找所有启用的监控任务
+func (r *MonitorRepo) FindByEnabledAndType(ctx context.Context, enabled bool, typ string) ([]models.MonitorTask, error) {
+	var monitors []models.MonitorTask
+	if err := r.GetDB(ctx).
+		Where("enabled = ? and type = ?", enabled, typ).
+		Find(&monitors).Error; err != nil {
+		return nil, err
+	}
+	return monitors, nil
+}

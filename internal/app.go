@@ -371,9 +371,9 @@ func startMetricsMonitoring(ctx context.Context, components *AppComponents, logg
 
 			for _, agent := range agents {
 				// 获取最新指标
-				latest, err := components.MetricService.GetLatestMetrics(ctx, agent.ID)
-				if err != nil {
-					logger.Debug("获取探针最新指标失败", zap.String("agentId", agent.ID), zap.Error(err))
+				latest, ok := components.MetricService.GetLatestMetrics(agent.ID)
+				if !ok {
+					logger.Debug("获取探针最新指标失败", zap.String("agentId", agent.ID))
 					continue
 				}
 				if latest == nil {

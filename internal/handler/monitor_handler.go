@@ -168,9 +168,9 @@ func (h *MonitorHandler) GetAgentStatsByID(c echo.Context) error {
 		return err
 	}
 
-	stats, err := h.monitorService.GetMonitorAgentStats(ctx, id)
-	if err != nil {
-		return err
+	stats, ok := h.monitorService.GetMonitorAgentStats(ctx, id)
+	if !ok {
+		return orz.NewError(404, "监控任务不存在")
 	}
 
 	return orz.Ok(c, stats)

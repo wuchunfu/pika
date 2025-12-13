@@ -288,7 +288,8 @@ type Evidence struct {
 
 // MonitorData 监控数据
 type MonitorData struct {
-	ID           string `json:"id"`                     // 监控项ID
+	AgentId      string `json:"agentId"`                // 探针 ID
+	MonitorId    string `json:"monitorId"`              // 监控项ID
 	Type         string `json:"type"`                   // 监控类型: http, tcp
 	Target       string `json:"target"`                 // 监控目标
 	Status       string `json:"status"`                 // 状态: up, down
@@ -301,6 +302,7 @@ type MonitorData struct {
 	// TLS 证书信息（仅用于 HTTPS）
 	CertExpiryTime int64 `json:"certExpiryTime,omitempty"` // 证书过期时间(毫秒时间戳)
 	CertDaysLeft   int   `json:"certDaysLeft,omitempty"`   // 证书剩余天数
+	Timestamp      int64 `json:"timestamp"`                // 检测时间(毫秒时间戳)
 }
 
 // TamperProtectConfig 防篡改保护配置（增量更新）

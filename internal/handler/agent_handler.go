@@ -443,9 +443,9 @@ func (h *AgentHandler) GetLatestMetrics(c echo.Context) error {
 		return err
 	}
 
-	metrics, err := h.metricService.GetLatestMetrics(ctx, id)
-	if err != nil {
-		return err
+	metrics, ok := h.metricService.GetLatestMetrics(id)
+	if !ok {
+		return orz.NewError(404, "探针最新指标不存在")
 	}
 
 	return orz.Ok(c, metrics)
@@ -514,8 +514,8 @@ func (h *AgentHandler) GetAgents(c echo.Context) error {
 		}
 
 		// 获取最新指标数据
-		metrics, err := h.metricService.GetLatestMetrics(ctx, agent.ID)
-		if err == nil && metrics != nil {
+		metrics, ok := h.metricService.GetLatestMetrics(agent.ID)
+		if ok {
 			item["metrics"] = metrics
 		}
 

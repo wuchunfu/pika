@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/dushixiang/pika/internal/models"
+	"github.com/dushixiang/pika/internal/protocol"
 	"github.com/dushixiang/pika/internal/repo"
 	"github.com/go-orz/orz"
 	"go.uber.org/zap"
@@ -18,19 +19,19 @@ type AlertService struct {
 	AlertRecordRepo *repo.AlertRecordRepo
 	AlertStateRepo  *repo.AlertStateRepo
 	agentRepo       *repo.AgentRepo
-	metricService   *MetricService
+	monitorService  *MonitorService
 	propertyService *PropertyService
 	notifier        *Notifier
 	logger          *zap.Logger
 }
 
-func NewAlertService(logger *zap.Logger, db *gorm.DB, propertyService *PropertyService, metricService *MetricService, notifier *Notifier) *AlertService {
+func NewAlertService(logger *zap.Logger, db *gorm.DB, propertyService *PropertyService, monitorService *MonitorService, notifier *Notifier) *AlertService {
 	return &AlertService{
 		Service:         orz.NewService(db),
 		AlertRecordRepo: repo.NewAlertRecordRepo(db),
 		AlertStateRepo:  repo.NewAlertStateRepo(db),
 		agentRepo:       repo.NewAgentRepo(db),
-		metricService:   metricService,
+		monitorService:  monitorService,
 		propertyService: propertyService,
 		notifier:        notifier,
 		logger:          logger,
@@ -373,7 +374,7 @@ func (s *AlertService) CheckMonitorAlerts(ctx context.Context) error {
 func (s *AlertService) checkCertificateAlerts(ctx context.Context, config *models.AlertConfig, now int64) error {
 	// 获取所有最新的监控指标（仅HTTPS类型）
 	// 这里需要查询最新的 monitor_metrics 记录，获取证书剩余天数
-	monitors, err := s.metricService.GetLatestMonitorMetricsByType(ctx, "http")
+	monitors, err := s.monitorService.GetLatestMonitorMetricsByType(ctx, "http")
 	if err != nil {
 		return err
 	}
@@ -407,7 +408,7 @@ func (s *AlertService) checkCertificateAlerts(ctx context.Context, config *model
 }
 
 // checkCertAlert 检查并触发证书告警
-func (s *AlertService) checkCertAlert(ctx context.Context, config *models.AlertConfig, agent *models.Agent, monitor *repo.MonitorMetric, certDaysLeft float64, now int64) {
+func (s *AlertService) checkCertAlert(ctx context.Context, config *models.AlertConfig, agent *models.Agent, monitor *protocol.MonitorData, certDaysLeft float64, now int64) {
 	stateKey := fmt.Sprintf("%s:global:cert:%s", agent.ID, monitor.MonitorId)
 
 	// 从数据库加载状态
@@ -479,7 +480,7 @@ func (s *AlertService) checkCertAlert(ctx context.Context, config *models.AlertC
 }
 
 // resolveCertAlert 恢复证书告警
-func (s *AlertService) resolveCertAlert(ctx context.Context, config *models.AlertConfig, agent *models.Agent, monitor *repo.MonitorMetric, certDaysLeft float64) {
+func (s *AlertService) resolveCertAlert(ctx context.Context, config *models.AlertConfig, agent *models.Agent, monitor *protocol.MonitorData, certDaysLeft float64) {
 	stateKey := fmt.Sprintf("%s:global:cert:%s", agent.ID, monitor.MonitorId)
 
 	state, err := s.AlertStateRepo.GetAlertState(ctx, stateKey)
@@ -536,7 +537,7 @@ func (s *AlertService) calculateCertLevel(daysLeft float64) string {
 // checkServiceDownAlerts 检查服务下线告警
 func (s *AlertService) checkServiceDownAlerts(ctx context.Context, config *models.AlertConfig, now int64) error {
 	// 获取所有最新的监控指标
-	monitors, err := s.metricService.GetAllLatestMonitorMetrics(ctx)
+	monitors, err := s.monitorService.GetAllLatestMonitorMetrics(ctx)
 	if err != nil {
 		return err
 	}
@@ -603,7 +604,7 @@ func (s *AlertService) checkServiceDownAlerts(ctx context.Context, config *model
 }
 
 // fireServiceDownAlert 触发服务下线告警
-func (s *AlertService) fireServiceDownAlert(ctx context.Context, config *models.AlertConfig, agent *models.Agent, monitor *repo.MonitorMetric, state *models.AlertState, now int64) {
+func (s *AlertService) fireServiceDownAlert(ctx context.Context, config *models.AlertConfig, agent *models.Agent, monitor *protocol.MonitorData, state *models.AlertState, now int64) {
 	s.logger.Info("触发服务下线告警",
 		zap.String("agentId", agent.ID),
 		zap.String("monitorId", monitor.MonitorId),
@@ -641,7 +642,7 @@ func (s *AlertService) fireServiceDownAlert(ctx context.Context, config *models.
 }
 
 // resolveServiceDownAlert 恢复服务下线告警
-func (s *AlertService) resolveServiceDownAlert(ctx context.Context, config *models.AlertConfig, agent *models.Agent, monitor *repo.MonitorMetric, state *models.AlertState) {
+func (s *AlertService) resolveServiceDownAlert(ctx context.Context, config *models.AlertConfig, agent *models.Agent, monitor *protocol.MonitorData, state *models.AlertState) {
 	s.logger.Info("服务下线告警恢复",
 		zap.String("agentId", agent.ID),
 		zap.String("monitorId", monitor.MonitorId),

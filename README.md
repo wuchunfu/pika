@@ -12,6 +12,11 @@
 
 Pika 是一个轻量级的探针监控系统，支持实时数据采集、存储和查询。系统采用 WebSocket 进行探针与服务端的通信，使用 VictoriaMetrics 存储时序指标数据，使用 PostgreSQL 存储配置和审计数据。除了基础监控功能外，还提供 Linux 应急响应和安全基线检查能力，帮助快速发现和分析系统安全风险。
 
+
+很多人可能会误会使用 PostgreSQL 和 VictoriaMetrics 太重，系统占用太高，实际上这两个组件的占用资源都比较低，以下截图为使用 `docker compose stats` 命令查看容器的资源占用情况。
+
+![dockerstats.png](screenshots/dockerstats.png)
+
 ## 功能特性
 
 ### 📊 实时性能监控

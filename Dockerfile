@@ -23,4 +23,4 @@ COPY config.example.yaml ./config.yaml
 EXPOSE 8080
 
 # 启动服务
-ENTRYPOINT ["./pika"]
+ENTRYPOINT ["./pika serve"]

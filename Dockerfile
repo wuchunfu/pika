@@ -16,9 +16,6 @@ ARG TARGETARCH
 # 从外部编译的产物复制文件
 COPY ./bin/pika-linux-${TARGETARCH} ./pika
 
-# 复制配置文件示例
-COPY config.example.yaml ./config.yaml
-
 # 暴露端口
 EXPOSE 8080
 

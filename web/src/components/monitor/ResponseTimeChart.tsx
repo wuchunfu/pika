@@ -7,6 +7,7 @@ import {MONITOR_TIME_RANGE_OPTIONS} from '@/constants/time';
 import type {AgentMonitorStat} from '@/types';
 import CyberCard from "@/components/CyberCard.tsx";
 import {ChartPlaceholder, CustomTooltip, TimeRangeSelector} from "@/components/common";
+import {formatChartTime} from '@/utils/util';
 
 interface ResponseTimeChartProps {
     monitorId: string;
@@ -79,10 +80,7 @@ export const ResponseTimeChart = ({monitorId, monitorStats}: ResponseTimeChartPr
             series.data.forEach(point => {
                 if (!grouped[point.timestamp]) {
                     grouped[point.timestamp] = {
-                        time: new Date(point.timestamp).toLocaleTimeString('zh-CN', {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                        }),
+                        time: formatChartTime(point.timestamp, timeRange),
                         timestamp: point.timestamp,
                     };
                 }
@@ -92,7 +90,7 @@ export const ResponseTimeChart = ({monitorId, monitorStats}: ResponseTimeChartPr
 
         // 按时间戳排序
         return Object.values(grouped).sort((a, b) => a.timestamp - b.timestamp);
-    }, [historyData, selectedAgent]);
+    }, [historyData, selectedAgent, timeRange]);
 
     return (
         <CyberCard className={'p-6'}>
@@ -159,6 +157,9 @@ export const ResponseTimeChart = ({monitorId, monitorStats}: ResponseTimeChartPr
                             stroke="#164e63"
                             tickLine={false}
                             axisLine={false}
+                            // minTickGap={50}
+                            angle={-15}
+                            textAnchor="end"
                         />
                         <YAxis
                             className="text-xs text-cyan-600 font-mono"

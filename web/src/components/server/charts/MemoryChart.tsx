@@ -4,6 +4,7 @@ import {Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAx
 import {ChartPlaceholder, CustomTooltip} from '@/components/common';
 import {useMetricsQuery} from '@/hooks/server/queries';
 import {ChartContainer} from './ChartContainer';
+import {formatChartTime} from '@/utils/util';
 
 interface MemoryChartProps {
     agentId: string;
@@ -27,14 +28,11 @@ export const MemoryChart = ({agentId, timeRange}: MemoryChartProps) => {
         if (!memorySeries) return [];
 
         return memorySeries.data.map((point) => ({
-            time: new Date(point.timestamp).toLocaleTimeString('zh-CN', {
-                hour: '2-digit',
-                minute: '2-digit',
-            }),
+            time: formatChartTime(point.timestamp, timeRange),
             usage: Number(point.value.toFixed(2)),
             timestamp: point.timestamp,
         }));
-    }, [metricsResponse]);
+    }, [metricsResponse, timeRange]);
 
     // 渲染
     if (isLoading) {
@@ -60,14 +58,14 @@ export const MemoryChart = ({agentId, timeRange}: MemoryChartProps) => {
                         <XAxis
                             dataKey="time"
                             stroke="currentColor"
-                            className="stroke-cyan-600"
-                            style={{fontSize: '12px'}}
+                            angle={-15}
+                            textAnchor="end"
+                            className="text-xs text-cyan-600 font-mono"
                         />
                         <YAxis
                             domain={[0, 100]}
                             stroke="currentColor"
-                            className="stroke-cyan-600"
-                            style={{fontSize: '12px'}}
+                            className="stroke-cyan-600 text-xs"
                             tickFormatter={(value) => `${value}%`}
                         />
                         <Tooltip content={<CustomTooltip unit="%" variant="dark"/>}/>

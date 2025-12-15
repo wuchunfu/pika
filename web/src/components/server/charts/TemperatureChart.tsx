@@ -5,6 +5,7 @@ import {ChartPlaceholder, CustomTooltip} from '@/components/common';
 import {useMetricsQuery} from '@/hooks/server/queries';
 import {TEMPERATURE_COLORS} from '@/constants/server';
 import {ChartContainer} from './ChartContainer';
+import {formatChartTime} from '@/utils/util';
 
 interface TemperatureChartProps {
     agentId: string;
@@ -35,10 +36,7 @@ export const TemperatureChart = ({agentId, timeRange}: TemperatureChartProps) =>
         metricsResponse.data.series?.forEach(series => {
             const sensorName = series.name; // 使用系列名称作为传感器标识
             series.data.forEach(point => {
-                const time = new Date(point.timestamp).toLocaleTimeString('zh-CN', {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                });
+                const time = formatChartTime(point.timestamp, timeRange);
 
                 if (!timeMap.has(point.timestamp)) {
                     timeMap.set(point.timestamp, {time, timestamp: point.timestamp});
@@ -50,7 +48,7 @@ export const TemperatureChart = ({agentId, timeRange}: TemperatureChartProps) =>
         });
 
         return Array.from(timeMap.values());
-    }, [metricsResponse]);
+    }, [metricsResponse, timeRange]);
 
     // 提取所有唯一的温度类型
     const temperatureTypes = useMemo(() => {
@@ -106,19 +104,20 @@ export const TemperatureChart = ({agentId, timeRange}: TemperatureChartProps) =>
 
     return (
         <ChartContainer title="系统温度" icon={Thermometer} action={tempTypeSelector}>
-            <ResponsiveContainer width="100%" height={220}>
+            <ResponsiveContainer width="100%" height={250}>
                 <LineChart data={chartData}>
                     <CartesianGrid stroke="currentColor" strokeDasharray="4 4" className="stroke-cyan-900/30"/>
                     <XAxis
                         dataKey="time"
                         stroke="currentColor"
-                        className="stroke-cyan-600"
-                        style={{fontSize: '12px'}}
+                        angle={-15}
+                        textAnchor="end"
+                        className="text-xs text-cyan-600 font-mono"
+                        height={45}
                     />
                     <YAxis
                         stroke="currentColor"
-                        className="stroke-cyan-600"
-                        style={{fontSize: '12px'}}
+                        className="stroke-cyan-600 text-xs"
                         tickFormatter={(value) => `${value}°C`}
                     />
                     <Tooltip content={<CustomTooltip unit="°C" variant="dark"/>}/>

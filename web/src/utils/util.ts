@@ -69,3 +69,31 @@ export const formatUptime = (seconds: number | undefined | null): string => {
 
     return parts.length > 0 ? parts.join(' ') : '不到 1 分钟';
 };
+
+/**
+ * 根据时间范围格式化图表时间标签
+ * @param timestamp - 时间戳（毫秒）
+ * @param timeRange - 时间范围（如 '1h', '1d', '3d', '7d'）
+ * @returns 格式化后的时间字符串
+ */
+export const formatChartTime = (timestamp: number, timeRange: string): string => {
+    const date = new Date(timestamp);
+    
+    // 解析时间范围，判断是否超过1天
+    const isLongRange = timeRange.endsWith('d') && parseInt(timeRange) > 1;
+    
+    if (isLongRange) {
+        // 超过1天：显示 "月/日 时:分"
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        return `${month}/${day} ${hours}:${minutes}`;
+    } else {
+        // 1天及以内：只显示 "时:分"
+        return date.toLocaleTimeString('zh-CN', {
+            hour: '2-digit',
+            minute: '2-digit',
+        });
+    }
+};

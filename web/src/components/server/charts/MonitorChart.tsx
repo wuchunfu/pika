@@ -4,6 +4,7 @@ import {Area, AreaChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XA
 import {ChartPlaceholder, CustomTooltip} from '@/components/common';
 import {useMetricsQuery} from '@/hooks/server/queries';
 import {ChartContainer} from './ChartContainer';
+import {formatChartTime} from '@/utils/util';
 
 interface MonitorChartProps {
     agentId: string;
@@ -33,10 +34,7 @@ export const MonitorChart = ({agentId, timeRange}: MonitorChartProps) => {
             s.data.forEach((point) => {
                 if (!timestampMap.has(point.timestamp)) {
                     timestampMap.set(point.timestamp, {
-                        time: new Date(point.timestamp).toLocaleTimeString('zh-CN', {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                        }),
+                        time: formatChartTime(point.timestamp, timeRange),
                         timestamp: point.timestamp,
                     });
                 }
@@ -50,7 +48,7 @@ export const MonitorChart = ({agentId, timeRange}: MonitorChartProps) => {
 
         // 转换为数组并排序
         return Array.from(timestampMap.values()).sort((a, b) => a.timestamp - b.timestamp);
-    }, [metricsResponse]);
+    }, [metricsResponse, timeRange]);
 
     // 获取所有监控任务的列表（使用名称）
     const monitorKeys = useMemo(() => {
@@ -78,7 +76,7 @@ export const MonitorChart = ({agentId, timeRange}: MonitorChartProps) => {
     return (
         <ChartContainer title="监控响应时间" icon={Activity}>
             {chartData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={220}>
+                <ResponsiveContainer width="100%" height={250}>
                     <AreaChart data={chartData}>
                         <defs>
                             {monitorKeys.map((key, index) => (
@@ -93,13 +91,14 @@ export const MonitorChart = ({agentId, timeRange}: MonitorChartProps) => {
                         <XAxis
                             dataKey="time"
                             stroke="currentColor"
-                            className="stroke-cyan-600"
-                            style={{fontSize: '12px'}}
+                            angle={-15}
+                            textAnchor="end"
+                            className="text-xs text-cyan-600 font-mono"
+                            height={45}
                         />
                         <YAxis
                             stroke="currentColor"
-                            className="stroke-cyan-600"
-                            style={{fontSize: '12px'}}
+                            className="stroke-cyan-600 text-xs"
                             tickFormatter={(value) => `${value}ms`}
                         />
                         <Tooltip content={<CustomTooltip unit="ms" variant="dark"/>}/>

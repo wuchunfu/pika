@@ -4,6 +4,7 @@ import {CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XA
 import {ChartPlaceholder, CustomTooltip} from '@/components/common';
 import {useMetricsQuery} from '@/hooks/server/queries';
 import {ChartContainer} from './ChartContainer';
+import {formatChartTime} from '@/utils/util';
 
 interface GpuChartProps {
     agentId: string;
@@ -34,10 +35,7 @@ export const GpuChart = ({agentId, timeRange}: GpuChartProps) => {
 
         // 添加利用率数据
         utilizationSeries?.data.forEach(point => {
-            const time = new Date(point.timestamp).toLocaleTimeString('zh-CN', {
-                hour: '2-digit',
-                minute: '2-digit',
-            });
+            const time = formatChartTime(point.timestamp, timeRange);
             timeMap.set(point.timestamp, {
                 time,
                 timestamp: point.timestamp,
@@ -54,7 +52,7 @@ export const GpuChart = ({agentId, timeRange}: GpuChartProps) => {
         });
 
         return Array.from(timeMap.values());
-    }, [metricsResponse]);
+    }, [metricsResponse, timeRange]);
 
     // 渲染
     if (isLoading) {

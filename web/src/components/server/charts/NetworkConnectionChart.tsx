@@ -4,6 +4,7 @@ import {CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XA
 import {ChartPlaceholder, CustomTooltip} from '@/components/common';
 import {useMetricsQuery} from '@/hooks/server/queries';
 import {ChartContainer} from './ChartContainer';
+import {formatChartTime} from '@/utils/util';
 
 interface NetworkConnectionChartProps {
     agentId: string;
@@ -31,10 +32,7 @@ export const NetworkConnectionChart = ({agentId, timeRange}: NetworkConnectionCh
         metricsResponse.data.series?.forEach(series => {
             const stateName = series.name; // established, time_wait, close_wait, listen
             series.data.forEach(point => {
-                const time = new Date(point.timestamp).toLocaleTimeString('zh-CN', {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                });
+                const time = formatChartTime(point.timestamp, timeRange);
 
                 if (!timeMap.has(point.timestamp)) {
                     timeMap.set(point.timestamp, {time, timestamp: point.timestamp});
@@ -48,7 +46,7 @@ export const NetworkConnectionChart = ({agentId, timeRange}: NetworkConnectionCh
         });
 
         return Array.from(timeMap.values());
-    }, [metricsResponse]);
+    }, [metricsResponse, timeRange]);
 
     // 渲染
     if (isLoading) {
@@ -62,19 +60,20 @@ export const NetworkConnectionChart = ({agentId, timeRange}: NetworkConnectionCh
     return (
         <ChartContainer title="网络连接统计" icon={Network}>
             {chartData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={220}>
+                <ResponsiveContainer width="100%" height={250}>
                     <LineChart data={chartData}>
                         <CartesianGrid stroke="currentColor" strokeDasharray="4 4" className="stroke-cyan-900/30"/>
                         <XAxis
                             dataKey="time"
                             stroke="currentColor"
-                            className="stroke-cyan-600"
-                            style={{fontSize: '12px'}}
+                            angle={-15}
+                            textAnchor="end"
+                            className="text-xs text-cyan-600 font-mono"
+                            height={45}
                         />
                         <YAxis
                             stroke="currentColor"
-                            className="stroke-cyan-600"
-                            style={{fontSize: '12px'}}
+                            className="stroke-cyan-600 text-xs"
                         />
                         <Tooltip content={<CustomTooltip unit="" variant="dark"/>}/>
                         <Legend/>

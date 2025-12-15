@@ -4,6 +4,7 @@ import {Area, AreaChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XA
 import {ChartPlaceholder, CustomTooltip} from '@/components/common';
 import {useMetricsQuery} from '@/hooks/server/queries';
 import {ChartContainer} from './ChartContainer';
+import {formatChartTime} from '@/utils/util';
 
 interface DiskIOChartProps {
     agentId: string;
@@ -34,10 +35,7 @@ export const DiskIOChart = ({agentId, timeRange}: DiskIOChartProps) => {
         const timeMap = new Map<number, any>();
 
         readSeries.data.forEach(point => {
-            const time = new Date(point.timestamp).toLocaleTimeString('zh-CN', {
-                hour: '2-digit',
-                minute: '2-digit',
-            });
+            const time = formatChartTime(point.timestamp, timeRange);
             timeMap.set(point.timestamp, {
                 time,
                 timestamp: point.timestamp,
@@ -53,7 +51,7 @@ export const DiskIOChart = ({agentId, timeRange}: DiskIOChartProps) => {
         });
 
         return Array.from(timeMap.values());
-    }, [metricsResponse]);
+    }, [metricsResponse, timeRange]);
 
     // 渲染
     if (isLoading) {
@@ -67,7 +65,7 @@ export const DiskIOChart = ({agentId, timeRange}: DiskIOChartProps) => {
     return (
         <ChartContainer title="磁盘 I/O (MB/s)" icon={HardDrive}>
             {chartData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={220}>
+                <ResponsiveContainer width="100%" height={250}>
                     <AreaChart data={chartData}>
                         <defs>
                             <linearGradient id="colorDiskRead" x1="0" y1="0" x2="0" y2="1">
@@ -83,13 +81,14 @@ export const DiskIOChart = ({agentId, timeRange}: DiskIOChartProps) => {
                         <XAxis
                             dataKey="time"
                             stroke="currentColor"
-                            className="stroke-cyan-600"
-                            style={{fontSize: '12px'}}
+                            angle={-15}
+                            textAnchor="end"
+                            className="text-xs text-cyan-600 font-mono"
+                            height={45}
                         />
                         <YAxis
                             stroke="currentColor"
-                            className="stroke-cyan-600"
-                            style={{fontSize: '12px'}}
+                            className="stroke-cyan-600 text-xs"
                             tickFormatter={(value) => `${value} MB`}
                         />
                         <Tooltip content={<CustomTooltip unit=" MB" variant="dark"/>}/>

@@ -257,9 +257,9 @@ const MonitorList = () => {
     }
 
     return (
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
+        <div className="mx-auto max-w-7xl px-3 sm:px-6 lg:px-8 py-4 sm:py-8 space-y-4 sm:space-y-6">
             {/* 统计卡片 */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4">
                 <StatCard
                     title="监控服务总数"
                     value={stats?.total}

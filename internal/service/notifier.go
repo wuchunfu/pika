@@ -47,8 +47,10 @@ func (n *Notifier) buildMessage(agent *models.Agent, record *models.AlertRecord)
 		levelIcon = "🚨"
 	}
 
-	// 告警类型名称
+	// 告警类型名称和单位
 	alertTypeName := ""
+	thresholdUnit := "%"
+	valueUnit := "%"
 	switch record.AlertType {
 	case "cpu":
 		alertTypeName = "CPU告警"
@@ -57,11 +59,21 @@ func (n *Notifier) buildMessage(agent *models.Agent, record *models.AlertRecord)
 	case "disk":
 		alertTypeName = "磁盘告警"
 	case "network":
-		alertTypeName = "网络断开告警"
+		alertTypeName = "网络告警"
+		thresholdUnit = "MB/s"
+		valueUnit = "MB/s"
 	case "cert":
 		alertTypeName = "证书告警"
+		thresholdUnit = "天"
+		valueUnit = "天"
 	case "service":
 		alertTypeName = "服务告警"
+		thresholdUnit = "秒"
+		valueUnit = "秒"
+	case "agent_offline":
+		alertTypeName = "探针离线告警"
+		thresholdUnit = "秒"
+		valueUnit = "秒"
 	}
 
 	if record.Status == "firing" {
@@ -73,8 +85,8 @@ func (n *Notifier) buildMessage(agent *models.Agent, record *models.AlertRecord)
 				"IP: %s\n"+
 				"告警类型: %s\n"+
 				"告警消息: %s\n"+
-				"阈值: %.2f%%\n"+
-				"当前值: %.2f%%\n"+
+				"阈值: %.2f%s\n"+
+				"当前值: %.2f%s\n"+
 				"触发时间: %s",
 			levelIcon,
 			alertTypeName,
@@ -85,7 +97,9 @@ func (n *Notifier) buildMessage(agent *models.Agent, record *models.AlertRecord)
 			record.AlertType,
 			record.Message,
 			record.Threshold,
+			thresholdUnit,
 			record.ActualValue,
+			valueUnit,
 			time.Unix(record.FiredAt/1000, 0).Local().Format("2006-01-02 15:04:05"),
 		)
 	} else if record.Status == "resolved" {
@@ -96,7 +110,7 @@ func (n *Notifier) buildMessage(agent *models.Agent, record *models.AlertRecord)
 				"主机: %s\n"+
 				"IP: %s\n"+
 				"告警类型: %s\n"+
-				"当前值: %.2f%%\n"+
+				"当前值: %.2f%s\n"+
 				"恢复时间: %s",
 			alertTypeName,
 			agent.Name,
@@ -105,6 +119,7 @@ func (n *Notifier) buildMessage(agent *models.Agent, record *models.AlertRecord)
 			agent.IP,
 			record.AlertType,
 			record.ActualValue,
+			valueUnit,
 			time.Unix(record.ResolvedAt/1000, 0).Local().Format("2006-01-02 15:04:05"),
 		)
 	}

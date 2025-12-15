@@ -128,12 +128,12 @@ const MonitorCard = ({monitor, displayMode}: {
                         <TypeIcon type={monitor.type}/>
                     </div>
                     <div className="flex-1 min-w-0">
-                        <div className="text-xs font-mono text-cyan-500/60 mb-0.5 tracking-wider">
-                            TARGET_ID: {monitor.id.toString().substring(0, 8)}
-                        </div>
                         <h3 className="font-bold text-sm text-cyan-100 tracking-wide truncate group-hover:text-cyan-400 transition-colors">
                             {monitor.name}
                         </h3>
+                        <div className="text-xs font-mono text-cyan-500/60 mb-0.5 tracking-wider truncate">
+                            {monitor.target}
+                        </div>
                     </div>
                 </div>
                 <div className="flex-shrink-0 ml-2">
@@ -153,12 +153,9 @@ const MonitorCard = ({monitor, displayMode}: {
                                 </span>
                         )}
                     </p>
-                    <p className={cn(
-                        "text-xl font-bold flex items-end gap-1 font-mono",
-                        displayValue > 200 ? 'text-amber-400' : 'text-cyan-100'
-                    )}>
-                        {displayValue} <span className="text-xs font-normal text-cyan-600 mb-1">ms</span>
-                    </p>
+                    <div className={`text-xl font-bold flex items-baseline gap-1 ${displayValue > 200 ? 'text-amber-400 drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]' : 'text-white drop-shadow-[0_0_8px_rgba(34,211,238,0.5)]'}`}>
+                        {displayValue}<span className="text-xs text-cyan-600 font-normal">ms</span>
+                    </div>
                 </div>
                 <div>
                     {monitor.type === 'https' && monitor.certExpiryTime ? (
@@ -183,7 +180,7 @@ const MonitorCard = ({monitor, displayMode}: {
             {/* 迷你走势图 */}
             <MiniChart
                 data={chartData}
-                status={monitor.status}
+                lastValue={displayValue}
                 id={monitor.id}
             />
         </CyberCard>

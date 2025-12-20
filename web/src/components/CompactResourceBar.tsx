@@ -7,27 +7,27 @@ const CompactResourceBar = ({value, label, subtext, icon: Icon, color = "bg-cyan
     const isWarning = value > 75;
 
     // 颜色定义 (Hex codes for precise control)
-    let activeColor = "";
+    let barColor = "";
     let iconClass = "";
     let textClass = "dark:text-cyan-50"; // 默认高亮白/青
 
     if (isCritical) {
-        activeColor = "#f43f5e"; // Rose
-        iconClass = "text-rose-400";
-        textClass = "text-rose-400 drop-shadow-[0_0_3px_rgba(244,63,94,0.5)]";
+        barColor = "bg-rose-500";
+        iconClass = "text-rose-600 dark:text-rose-500";
+        textClass = "text-rose-400";
     } else if (isWarning) {
-        activeColor = "#f59e0b"; // Amber
-        iconClass = "text-amber-400";
+        barColor = "bg-amber-500";
+        iconClass = "text-amber-600 dark:text-amber-400";
         textClass = "text-amber-400";
     } else if (color.includes("purple")) {
-        activeColor = "#a855f7"; // Purple
-        iconClass = "text-purple-400";
+        barColor = "bg-purple-500";
+        iconClass = "text-purple-600 dark:text-purple-400";
     } else if (color.includes("blue")) {
-        activeColor = "#3b82f6"; // Blue
-        iconClass = "text-blue-400";
+        barColor = "bg-blue-500";
+        iconClass = "text-blue-600 dark:text-blue-400";
     } else {
-        activeColor = "#06b6d4"; // Cyan (Default)
-        iconClass = "text-cyan-400";
+        barColor = "bg-cyan-500";
+        iconClass = "text-cyan-600 dark:text-cyan-400";
     }
 
     return (
@@ -54,20 +54,16 @@ const CompactResourceBar = ({value, label, subtext, icon: Icon, color = "bg-cyan
                                     }}
                                 ></div>
 
-                                {/* Active Bar with Industrial Stripes */}
                                 <div
-                                    className="h-full relative transition-all duration-500 ease-out z-10"
+                                    className={`h-full relative transition-all duration-500 ease-out z-10 ${barColor}`}
                                     style={{
                                         width: `${Math.min(value, 100)}%`,
-                                        backgroundColor: activeColor,
-                                        // 45-degree angled stripes pattern
                                         backgroundImage: 'linear-gradient(45deg,rgba(0,0,0,.2) 25%,transparent 25%,transparent 50%,rgba(0,0,0,.2) 50%,rgba(0,0,0,.2) 75%,transparent 75%,transparent)',
                                         backgroundSize: '4px 4px'
                                     }}
                                 >
-                                    {/* Leading Edge Laser Line */}
                                     <div
-                                        className="absolute right-0 top-0 bottom-0 w-[1.5px] bg-white shadow-[0_0_8px_white]"></div>
+                                        className="absolute right-0 top-0 bottom-0 w-[1.5px] bg-black shadow-[0_0_8px_black] dark:bg-white dark:shadow-[0_0_8px_white]"></div>
                                 </div>
                             </div>
                             <div

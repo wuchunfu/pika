@@ -2,7 +2,7 @@ database:
   enabled: true
   type: sqlite
   sqlite:
-    path: "./pika.db"
+    path: "./data/pika.db"
   show_sql: false
 log:
   level: debug # 日志等级  debug,info,waring,error

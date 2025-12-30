@@ -47,6 +47,24 @@ type ServerConfig struct {
 type AgentConfig struct {
 	// Agent 名称（默认使用主机名）
 	Name string `yaml:"name"`
+
+	// 日志等级（debug, info, warn, error，默认为 info）
+	LogLevel string `yaml:"log_level"`
+
+	// 日志文件路径（默认为空，输出到控制台）
+	LogFile string `yaml:"log_file"`
+
+	// 日志文件最大大小（MB，默认 100MB）
+	LogMaxSize int `yaml:"log_max_size"`
+
+	// 日志文件最大备份数（默认 3）
+	LogMaxBackups int `yaml:"log_max_backups"`
+
+	// 日志文件最大保留天数（默认 28 天）
+	LogMaxAge int `yaml:"log_max_age"`
+
+	// 是否压缩旧日志文件（默认 true）
+	LogCompress bool `yaml:"log_compress"`
 }
 
 // CollectorConfig 采集器配置
@@ -93,7 +111,13 @@ func DefaultConfig() *Config {
 			InsecureSkipVerify: false,
 		},
 		Agent: AgentConfig{
-			Name: "",
+			Name:          "",
+			LogLevel:      "info",
+			LogFile:       "",
+			LogMaxSize:    100,
+			LogMaxBackups: 3,
+			LogMaxAge:     28,
+			LogCompress:   true,
 		},
 		Collector: CollectorConfig{
 			Interval:          5,
@@ -197,6 +221,20 @@ func (c *Config) Validate() error {
 		if _, err := time.ParseDuration(c.AutoUpdate.CheckInterval); err != nil {
 			return fmt.Errorf("更新检查间隔格式错误: %w", err)
 		}
+	}
+
+	// 验证日志等级
+	if c.Agent.LogLevel == "" {
+		c.Agent.LogLevel = "info"
+	}
+	validLogLevels := map[string]bool{
+		"debug": true,
+		"info":  true,
+		"warn":  true,
+		"error": true,
+	}
+	if !validLogLevels[c.Agent.LogLevel] {
+		return fmt.Errorf("无效的日志等级: %s (可选值: debug, info, warn, error)", c.Agent.LogLevel)
 	}
 
 	return nil

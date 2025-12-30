@@ -20,4 +20,4 @@ COPY ./bin/agents/pika-agent-linux-${TARGETARCH} ./pika-agent
 RUN chmod +x ./pika-agent
 
 # 启动 agent
-ENTRYPOINT ["./pika-agent"]
+ENTRYPOINT ["./pika-agent", "run"]

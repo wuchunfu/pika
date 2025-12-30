@@ -2,7 +2,7 @@ package sysutil
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
@@ -27,19 +27,18 @@ func doConfigureICMPPermissions() error {
 
 	// 2. 检查是否已经满足要求 (范围包含 0 到 2147483647)
 	if currentMin <= 0 && currentMax >= 2147483647 {
-		log.Printf("✅ ICMP 权限已配置: net.ipv4.ping_group_range=%d %d", currentMin, currentMax)
+		slog.Info("ICMP 权限已配置", "min", currentMin, "max", currentMax)
 		return nil
 	}
 
 	// 3. 需要配置，写入新值
-	log.Printf("🔧 当前 ICMP 配置: net.ipv4.ping_group_range=%d %d (不满足要求)", currentMin, currentMax)
-	log.Println("   正在配置为: 0 2147483647")
+	slog.Info("当前 ICMP 配置不满足要求，正在配置", "current_min", currentMin, "current_max", currentMax, "target", "0 2147483647")
 
 	if err := writePingGroupRange(sysctlPath, 0, 2147483647); err != nil {
 		return fmt.Errorf("配置 ICMP 权限失败: %w", err)
 	}
 
-	log.Println("✅ ICMP 权限配置成功: net.ipv4.ping_group_range=0 2147483647")
+	slog.Info("ICMP 权限配置成功", "range", "0 2147483647")
 	return nil
 }
 

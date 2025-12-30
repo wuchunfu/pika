@@ -7,7 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"os/exec"
 	"strings"
@@ -29,19 +29,19 @@ type Logger interface {
 type defaultLogger struct{}
 
 func (l *defaultLogger) Debug(format string, args ...interface{}) {
-	log.Printf("[DEBUG] "+format, args...)
+	slog.Debug(fmt.Sprintf(format, args...))
 }
 
 func (l *defaultLogger) Info(format string, args ...interface{}) {
-	log.Printf("[INFO] "+format, args...)
+	slog.Info(fmt.Sprintf(format, args...))
 }
 
 func (l *defaultLogger) Warn(format string, args ...interface{}) {
-	log.Printf("[WARN] "+format, args...)
+	slog.Warn(fmt.Sprintf(format, args...))
 }
 
 func (l *defaultLogger) Error(format string, args ...interface{}) {
-	log.Printf("[ERROR] "+format, args...)
+	slog.Error(fmt.Sprintf(format, args...))
 }
 
 var globalLogger Logger = &defaultLogger{}

@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 
 	"github.com/dushixiang/pika/pkg/agent/config"
 	"github.com/dushixiang/pika/pkg/agent/service"
 	"github.com/dushixiang/pika/pkg/agent/updater"
+	"github.com/dushixiang/pika/pkg/agent/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -463,7 +465,13 @@ func registerAgent(cmd *cobra.Command, args []string) {
 			APIKey:   apiKey,
 		},
 		Agent: config.AgentConfig{
-			Name: name,
+			Name:          name,
+			LogLevel:      "info",
+			LogFile:       getHomeLogPath(),
+			LogMaxSize:    100,
+			LogMaxBackups: 3,
+			LogMaxAge:     28,
+			LogCompress:   true,
 		},
 		Collector: config.CollectorConfig{
 			Interval:          5,
@@ -514,6 +522,11 @@ func maskToken(token string) string {
 		return "****"
 	}
 	return token[:4] + "****" + token[len(token)-4:]
+}
+
+func getHomeLogPath() string {
+	homeDir := utils.GetSafeHomeDir()
+	return filepath.Join(homeDir, ".pika", "logs", "agent.log")
 }
 
 // showInfo 显示配置信息

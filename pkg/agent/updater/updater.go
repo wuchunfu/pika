@@ -5,7 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
@@ -57,11 +57,11 @@ func New(cfg *config.Config, currentVer string) (*Updater, error) {
 // Start 启动自动更新检查
 func (u *Updater) Start(ctx context.Context) {
 	if !u.cfg.AutoUpdate.Enabled {
-		log.Println("自动更新已禁用")
+		slog.Info("自动更新已禁用")
 		return
 	}
 
-	log.Printf("自动更新已启用，检查间隔: %v", u.cfg.GetUpdateCheckInterval())
+	slog.Info("自动更新已启用", "check_interval", u.cfg.GetUpdateCheckInterval())
 
 	// 立即检查一次
 	u.CheckAndUpdate()
@@ -75,7 +75,7 @@ func (u *Updater) Start(ctx context.Context) {
 		case <-ticker.C:
 			u.CheckAndUpdate()
 		case <-ctx.Done():
-			log.Println("停止自动更新检查")
+			slog.Info("停止自动更新检查")
 			return
 		}
 	}
@@ -83,30 +83,30 @@ func (u *Updater) Start(ctx context.Context) {
 
 // CheckAndUpdate 检查并更新
 func (u *Updater) CheckAndUpdate() {
-	log.Println("🔍 检查更新...")
+	slog.Debug("检查更新...")
 
 	// 获取最新版本信息
 	versionInfo, err := u.fetchLatestVersion()
 	if err != nil {
-		log.Printf("⚠️  获取版本信息失败: %v", err)
+		slog.Warn("获取版本信息失败", "error", err)
 		return
 	}
 
 	// 比较版本
 	if versionInfo.Version == u.currentVer {
-		log.Printf("✅ 当前已是最新版本: %s", u.currentVer)
+		slog.Debug("当前已是最新版本", "version", u.currentVer)
 		return
 	}
 
-	log.Printf("🆕 发现新版本: %s (当前版本: %s)", versionInfo.Version, u.currentVer)
+	slog.Info("发现新版本", "new_version", versionInfo.Version, "current_version", u.currentVer)
 
 	// 下载新版本
 	if err := u.downloadAndUpdate(versionInfo); err != nil {
-		log.Printf("❌ 更新失败: %v", err)
+		slog.Error("更新失败", "error", err)
 		return
 	}
 
-	log.Println("✅ 更新成功，将在下次重启时生效")
+	slog.Info("更新成功，将在下次重启时生效")
 }
 
 // fetchLatestVersion 获取最新版本信息
@@ -137,7 +137,7 @@ func (u *Updater) checkUpdateWithClient(latestVersionURL string) (*VersionInfo, 
 
 // downloadAndUpdate 下载并更新
 func (u *Updater) downloadAndUpdate(versionInfo *VersionInfo) error {
-	log.Printf("📥 下载新版本: %s", versionInfo.Version)
+	slog.Info("下载新版本", "version", versionInfo.Version)
 
 	downloadURL := u.cfg.GetDownloadURL()
 
@@ -157,7 +157,7 @@ func (u *Updater) downloadAndUpdate(versionInfo *VersionInfo) error {
 		return fmt.Errorf("应用更新失败: %w", err)
 	}
 
-	log.Printf("✅ 更新成功，进程即将退出，等待系统服务重启...")
+	slog.Info("更新成功，进程即将退出，等待系统服务重启...")
 
 	// 退出当前进程，让系统服务管理器（systemd/supervisor等）自动重启
 	// 注意：这要求服务配置了自动重启（如 systemd 的 Restart=always）

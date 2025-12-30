@@ -3,11 +3,12 @@ package service
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 
+	"github.com/dushixiang/pika/pkg/agent"
 	"github.com/dushixiang/pika/pkg/agent/config"
 	"github.com/dushixiang/pika/pkg/agent/id"
 	"github.com/dushixiang/pika/pkg/agent/sysutil"
@@ -26,9 +27,8 @@ type program struct {
 // configureICMP 配置 ICMP 权限（抽取通用逻辑）
 func configureICMP() {
 	if err := sysutil.ConfigureICMPPermissions(); err != nil {
-		log.Printf("⚠️  配置 ICMP 权限失败: %v", err)
-		log.Println("   提示: ICMP 监控可能需要 root 权限运行，或手动执行:")
-		log.Println("   sudo sysctl -w net.ipv4.ping_group_range=\"0 2147483647\"")
+		slog.Warn("配置 ICMP 权限失败", "error", err)
+		slog.Info("提示: ICMP 监控可能需要 root 权限运行，或手动执行: sudo sysctl -w net.ipv4.ping_group_range=\"0 2147483647\"")
 	}
 }
 
@@ -41,7 +41,7 @@ func startAgent(ctx context.Context, cfg *config.Config) *Agent {
 	if cfg.AutoUpdate.Enabled {
 		upd, err := updater.New(cfg, GetVersion())
 		if err != nil {
-			log.Printf("⚠️  创建更新器失败: %v", err)
+			slog.Warn("创建更新器失败", "error", err)
 		} else {
 			go upd.Start(ctx)
 		}
@@ -50,7 +50,7 @@ func startAgent(ctx context.Context, cfg *config.Config) *Agent {
 	// 在后台启动 Agent
 	go func() {
 		if err := agent.Start(ctx); err != nil {
-			log.Printf("⚠️  探针运行出错: %v", err)
+			slog.Warn("探针运行出错", "error", err)
 		}
 	}()
 
@@ -59,7 +59,17 @@ func startAgent(ctx context.Context, cfg *config.Config) *Agent {
 
 // Start 启动服务
 func (p *program) Start(s service.Service) error {
-	log.Println("✅ Pika Agent 服务启动中...")
+	// 初始化日志系统
+	agent.InitLogger(&agent.LogConfig{
+		Level:      p.cfg.Agent.LogLevel,
+		File:       p.cfg.Agent.LogFile,
+		MaxSize:    p.cfg.Agent.LogMaxSize,
+		MaxBackups: p.cfg.Agent.LogMaxBackups,
+		MaxAge:     p.cfg.Agent.LogMaxAge,
+		Compress:   p.cfg.Agent.LogCompress,
+	})
+
+	slog.Info("Pika Agent 服务启动中...")
 
 	// 初始化系统配置（Linux ICMP 权限等）
 	configureICMP()
@@ -75,7 +85,7 @@ func (p *program) Start(s service.Service) error {
 
 // Stop 停止服务
 func (p *program) Stop(s service.Service) error {
-	log.Println("📴 Pika Agent 服务停止中...")
+	slog.Info("Pika Agent 服务停止中...")
 
 	if p.cancel != nil {
 		p.cancel()
@@ -85,7 +95,7 @@ func (p *program) Stop(s service.Service) error {
 		p.agent.Stop()
 	}
 
-	log.Println("✅ Pika Agent 服务已停止")
+	slog.Info("Pika Agent 服务已停止")
 	return nil
 }
 
@@ -206,10 +216,20 @@ func (m *ServiceManager) Run() error {
 	}
 
 	// 交互模式（前台运行）
-	log.Printf("✅ 配置加载成功")
-	log.Printf("   服务器地址: %s", m.cfg.Server.Endpoint)
-	log.Printf("   采集间隔: %v", m.cfg.GetCollectorInterval())
-	log.Printf("   心跳间隔: %v", m.cfg.GetHeartbeatInterval())
+	// 初始化日志系统
+	agent.InitLogger(&agent.LogConfig{
+		Level:      m.cfg.Agent.LogLevel,
+		File:       m.cfg.Agent.LogFile,
+		MaxSize:    m.cfg.Agent.LogMaxSize,
+		MaxBackups: m.cfg.Agent.LogMaxBackups,
+		MaxAge:     m.cfg.Agent.LogMaxAge,
+		Compress:   m.cfg.Agent.LogCompress,
+	})
+
+	slog.Info("配置加载成功",
+		"server_endpoint", m.cfg.Server.Endpoint,
+		"collector_interval", m.cfg.GetCollectorInterval(),
+		"heartbeat_interval", m.cfg.GetHeartbeatInterval())
 
 	// 初始化系统配置（Linux ICMP 权限等）
 	configureICMP()
@@ -227,12 +247,12 @@ func (m *ServiceManager) Run() error {
 
 	// 等待中断信号
 	<-interrupt
-	log.Println("📴 收到中断信号，正在关闭...")
+	slog.Info("收到中断信号，正在关闭...")
 	cancel()
 
 	// 等待 Agent 停止
 	agent.Stop()
-	log.Println("✅ 探针已停止")
+	slog.Info("探针已停止")
 
 	return nil
 }
@@ -254,7 +274,7 @@ func UninstallAgent(cfgPath string) error {
 	// 检查服务状态，如果在运行则停止
 	status, err := mgr.Status()
 	if err != nil {
-		log.Printf("⚠️  获取服务状态失败: %v", err)
+		slog.Warn("获取服务状态失败", "error", err)
 	} else if status != "已停止 (Stopped)" {
 		if err := mgr.Stop(); err != nil {
 			return fmt.Errorf("停止服务失败: %w", err)
@@ -268,13 +288,13 @@ func UninstallAgent(cfgPath string) error {
 
 	// 删除配置文件
 	if err := os.Remove(cfgPath); err != nil {
-		log.Printf("⚠️  删除配置文件失败: %v", err)
+		slog.Warn("删除配置文件失败", "error", err)
 	}
 
 	// 删除探针 ID 文件
 	idPath := id.GetIDFilePath()
 	if err := os.Remove(idPath); err != nil {
-		log.Printf("⚠️  删除探针 ID 文件失败: %v", err)
+		slog.Warn("删除探针 ID 文件失败", "error", err)
 	}
 
 	return nil

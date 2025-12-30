@@ -3,7 +3,7 @@ package tamper
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"runtime"
 	"sync"
@@ -72,7 +72,7 @@ func (p *Protector) ApplyIncrementalUpdate(ctx context.Context, toAdd, toRemove 
 
 	// 如果没有变化,直接返回
 	if len(toAdd) == 0 && len(toRemove) == 0 {
-		log.Println("ℹ️  防篡改保护目录列表无变化")
+		slog.Info("防篡改保护目录列表无变化")
 		return &UpdateResult{
 			Added:   []string{},
 			Removed: []string{},
@@ -91,15 +91,15 @@ func (p *Protector) ApplyIncrementalUpdate(ctx context.Context, toAdd, toRemove 
 	var removeFailed []string
 	for _, path := range toRemove {
 		if !p.paths[path] {
-			log.Printf("ℹ️  目录 %s 未被保护，跳过移除", path)
+			slog.Info("目录未被保护，跳过移除", "path", path)
 			continue
 		}
 		if err := p.removePath(path); err != nil {
-			log.Printf("⚠️  移除目录 %s 保护失败: %v", path, err)
+			slog.Warn("移除目录保护失败", "path", path, "error", err)
 			removeFailed = append(removeFailed, path)
 		} else {
 			delete(p.paths, path)
-			log.Printf("✅ 已取消保护目录: %s", path)
+			slog.Info("已取消保护目录", "path", path)
 		}
 	}
 
@@ -107,15 +107,15 @@ func (p *Protector) ApplyIncrementalUpdate(ctx context.Context, toAdd, toRemove 
 	var addFailed []string
 	for _, path := range toAdd {
 		if p.paths[path] {
-			log.Printf("ℹ️  目录 %s 已被保护，跳过新增", path)
+			slog.Info("目录已被保护，跳过新增", "path", path)
 			continue
 		}
 		if err := p.addPath(path); err != nil {
-			log.Printf("⚠️  添加目录 %s 保护失败: %v", path, err)
+			slog.Warn("添加目录保护失败", "path", path, "error", err)
 			addFailed = append(addFailed, path)
 		} else {
 			p.paths[path] = true
-			log.Printf("✅ 已保护目录: %s", path)
+			slog.Info("已保护目录", "path", path)
 		}
 	}
 
@@ -131,8 +131,10 @@ func (p *Protector) ApplyIncrementalUpdate(ctx context.Context, toAdd, toRemove 
 		return result, fmt.Errorf("部分操作失败: 添加失败 %d 个, 移除失败 %d 个", len(addFailed), len(removeFailed))
 	}
 
-	log.Printf("✅ 防篡改保护已更新: 新增 %d 个目录, 移除 %d 个目录, 当前保护 %d 个目录",
-		len(result.Added), len(result.Removed), len(result.Current))
+	slog.Info("防篡改保护已更新",
+		"新增", len(result.Added),
+		"移除", len(result.Removed),
+		"当前保护", len(result.Current))
 
 	return result, nil
 }
@@ -173,7 +175,7 @@ func (p *Protector) UpdatePaths(ctx context.Context, newPaths []string) (*Update
 
 	// 如果没有变化,直接返回
 	if len(toAdd) == 0 && len(toRemove) == 0 {
-		log.Println("ℹ️  防篡改保护目录列表无变化")
+		slog.Info("防篡改保护目录列表无变化")
 		return &UpdateResult{
 			Added:   []string{},
 			Removed: []string{},
@@ -190,11 +192,11 @@ func (p *Protector) UpdatePaths(ctx context.Context, newPaths []string) (*Update
 	var removeFailed []string
 	for _, path := range toRemove {
 		if err := p.removePath(path); err != nil {
-			log.Printf("⚠️  移除目录 %s 保护失败: %v", path, err)
+			slog.Warn("移除目录保护失败", "path", path, "error", err)
 			removeFailed = append(removeFailed, path)
 		} else {
 			delete(p.paths, path)
-			log.Printf("✅ 已取消保护目录: %s", path)
+			slog.Info("已取消保护目录", "path", path)
 		}
 	}
 
@@ -202,11 +204,11 @@ func (p *Protector) UpdatePaths(ctx context.Context, newPaths []string) (*Update
 	var addFailed []string
 	for _, path := range toAdd {
 		if err := p.addPath(path); err != nil {
-			log.Printf("⚠️  添加目录 %s 保护失败: %v", path, err)
+			slog.Warn("添加目录保护失败", "path", path, "error", err)
 			addFailed = append(addFailed, path)
 		} else {
 			p.paths[path] = true
-			log.Printf("✅ 已保护目录: %s", path)
+			slog.Info("已保护目录", "path", path)
 		}
 	}
 
@@ -222,8 +224,10 @@ func (p *Protector) UpdatePaths(ctx context.Context, newPaths []string) (*Update
 		return result, fmt.Errorf("部分操作失败: 添加失败 %d 个, 移除失败 %d 个", len(addFailed), len(removeFailed))
 	}
 
-	log.Printf("✅ 防篡改保护已更新: 新增 %d 个目录, 移除 %d 个目录, 当前保护 %d 个目录",
-		len(result.Added), len(result.Removed), len(result.Current))
+	slog.Info("防篡改保护已更新",
+		"新增", len(result.Added),
+		"移除", len(result.Removed),
+		"当前保护", len(result.Current))
 
 	return result, nil
 }
@@ -234,7 +238,7 @@ func (p *Protector) StopAll() error {
 	defer p.mu.Unlock()
 
 	if len(p.paths) == 0 {
-		log.Println("ℹ️  没有正在保护的目录")
+		slog.Info("没有正在保护的目录")
 		return nil
 	}
 
@@ -255,7 +259,7 @@ func (p *Protector) StopAll() error {
 	// 关闭监控器
 	if p.watcher != nil {
 		if err := p.watcher.Close(); err != nil {
-			log.Printf("⚠️  关闭文件监控器失败: %v", err)
+			slog.Warn("关闭文件监控器失败", "error", err)
 			lastErr = err
 		}
 		p.watcher = nil
@@ -265,17 +269,17 @@ func (p *Protector) StopAll() error {
 	// 移除所有目录的不可变属性
 	for path := range p.paths {
 		if err := p.setImmutable(path, false); err != nil {
-			log.Printf("⚠️  移除目录 %s 不可变属性失败: %v", path, err)
+			slog.Warn("移除目录不可变属性失败", "path", path, "error", err)
 			lastErr = err
 		} else {
-			log.Printf("✅ 已取消保护目录: %s", path)
+			slog.Info("已取消保护目录", "path", path)
 		}
 	}
 
 	// 清空路径列表
 	p.paths = make(map[string]bool)
 
-	log.Println("✅ 已停止所有防篡改保护")
+	slog.Info("已停止所有防篡改保护")
 	return lastErr
 }
 
@@ -333,7 +337,7 @@ func (p *Protector) initWatcher(ctx context.Context) error {
 		p.checkTicker = time.NewTicker(5 * time.Second)
 		go p.periodicAttributeCheck()
 
-		log.Println("✅ 文件监控器已启动")
+		slog.Info("文件监控器已启动")
 	})
 	return err
 }
@@ -362,7 +366,7 @@ func (p *Protector) removePath(path string) error {
 	// 从监控中移除
 	if p.watcher != nil {
 		if err := p.watcher.Remove(path); err != nil {
-			log.Printf("⚠️  从监控中移除目录失败: %v", err)
+			slog.Warn("从监控中移除目录失败", "error", err)
 			// 继续执行,不返回错误
 		}
 	}
@@ -390,7 +394,7 @@ func (p *Protector) watchLoop() {
 			if !ok {
 				return
 			}
-			log.Printf("⚠️  文件监控错误: %v", err)
+			slog.Warn("文件监控错误", "error", err)
 		}
 	}
 }
@@ -431,9 +435,9 @@ func (p *Protector) handleEvent(event fsnotify.Event) {
 	// 发送事件(非阻塞)
 	select {
 	case p.eventCh <- tamperEvent:
-		log.Printf("🚨 检测到文件变动: %s - %s (%s)", event.Name, operation, details)
+		slog.Warn("检测到文件变动", "path", event.Name, "operation", operation, "details", details)
 	default:
-		log.Printf("⚠️  事件队列已满,丢弃事件: %s", event.Name)
+		slog.Warn("事件队列已满,丢弃事件", "path", event.Name)
 	}
 }
 
@@ -468,20 +472,20 @@ func (p *Protector) checkAndRestoreImmutable(path string) {
 	// 检查不可变属性
 	hasImmutable, err := p.checkImmutable(path)
 	if err != nil {
-		log.Printf("⚠️  检查目录 %s 属性失败: %v", path, err)
+		slog.Warn("检查目录属性失败", "path", path, "error", err)
 		return
 	}
 
 	// 如果不可变属性被移除
 	if !hasImmutable {
-		log.Printf("🚨 检测到属性篡改: %s 的不可变属性被移除", path)
+		slog.Warn("检测到属性篡改", "path", path, "details", "不可变属性被移除")
 
 		// 尝试恢复属性
 		restored := false
 		if err := p.setImmutable(path, true); err != nil {
-			log.Printf("❌ 恢复目录 %s 不可变属性失败: %v", path, err)
+			slog.Error("恢复目录不可变属性失败", "path", path, "error", err)
 		} else {
-			log.Printf("✅ 已自动恢复目录 %s 的不可变属性", path)
+			slog.Info("已自动恢复目录的不可变属性", "path", path)
 			restored = true
 		}
 
@@ -495,9 +499,9 @@ func (p *Protector) checkAndRestoreImmutable(path string) {
 
 		select {
 		case p.alertCh <- alert:
-			log.Printf("📤 已发送属性篡改告警: %s", path)
+			slog.Info("已发送属性篡改告警", "path", path)
 		default:
-			log.Printf("⚠️  告警队列已满,丢弃告警: %s", path)
+			slog.Warn("告警队列已满,丢弃告警", "path", path)
 		}
 	}
 }

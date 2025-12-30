@@ -201,20 +201,12 @@ func (c *Config) Save(path string) error {
 
 // Validate 验证配置
 func (c *Config) Validate() error {
-	if c.Server.Endpoint == "" {
-		return fmt.Errorf("服务器地址不能为空")
-	}
-
-	if c.Server.APIKey == "" {
-		return fmt.Errorf("API Key 不能为空")
-	}
-
 	if c.Collector.Interval <= 0 {
-		return fmt.Errorf("采集间隔必须大于 0")
+		c.Collector.Interval = 5
 	}
 
 	if c.Collector.HeartbeatInterval <= 0 {
-		return fmt.Errorf("心跳间隔必须大于 0")
+		c.Collector.HeartbeatInterval = 30
 	}
 
 	if c.AutoUpdate.Enabled {

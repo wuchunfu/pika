@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 
 	"github.com/dushixiang/pika/pkg/agent"
@@ -35,7 +36,7 @@ func configureICMP() {
 // startAgent 启动 Agent 和自动更新（抽取通用逻辑）
 func startAgent(ctx context.Context, cfg *config.Config) *Agent {
 	// 创建 Agent 实例
-	agent := New(cfg)
+	a := New(cfg)
 
 	// 启动自动更新（如果启用）
 	if cfg.AutoUpdate.Enabled {
@@ -49,12 +50,12 @@ func startAgent(ctx context.Context, cfg *config.Config) *Agent {
 
 	// 在后台启动 Agent
 	go func() {
-		if err := agent.Start(ctx); err != nil {
+		if err := a.Start(ctx); err != nil {
 			slog.Warn("探针运行出错", "error", err)
 		}
 	}()
 
-	return agent
+	return a
 }
 
 // Start 启动服务
@@ -105,12 +106,64 @@ type ServiceManager struct {
 	service service.Service
 }
 
+// systemd 自定义模板（支持自定义 RestartSec）
+const systemdScript = `[Unit]
+Description={{.Description}}
+ConditionFileIsExecutable={{.Path|cmdEscape}}
+{{range .Dependencies}} {{.}} {{end}}
+
+[Service]
+StartLimitInterval=5
+StartLimitBurst=10
+ExecStart={{.Path|cmdEscape}}{{range .Arguments}} {{.|cmd}}{{end}}
+{{if .ChRoot}}RootDirectory={{.ChRoot|cmd}}{{end}}
+{{if .WorkingDirectory}}WorkingDirectory={{.WorkingDirectory|cmdEscape}}{{end}}
+{{if .UserName}}User={{.UserName}}{{end}}
+{{if .ReloadSignal}}ExecReload=/bin/kill -{{.ReloadSignal}} "$MAINPID"{{end}}
+{{if .PIDFile}}PIDFile={{.PIDFile|cmd}}{{end}}
+{{if .LogOutput}}StandardOutput={{.LogOutput}}
+StandardError={{.LogOutput}}{{end}}
+{{if .LogDirectory}}LogsDirectory={{.LogDirectory}}{{end}}
+Restart=always
+RestartSec=5
+KillMode=process
+EnvironmentFile=-/etc/sysconfig/{{.Name}}
+
+[Install]
+WantedBy=multi-user.target
+`
+
 // NewServiceManager 创建服务管理器
 func NewServiceManager(cfg *config.Config) (*ServiceManager, error) {
 	// 获取可执行文件路径
 	execPath, err := os.Executable()
 	if err != nil {
 		return nil, fmt.Errorf("获取可执行文件路径失败: %w", err)
+	}
+
+	var options = service.KeyValue{
+		// 其他 Unix 系统 (upstart/launchd)
+		"KeepAlive": true, // 保持运行
+		"RunAtLoad": true, // 启动时运行
+	}
+
+	switch runtime.GOOS {
+	case "darwin":
+	case "linux":
+		// 使用自定义 systemd 模板（支持自定义 RestartSec=5）
+		options["SystemdScript"] = systemdScript
+	case "windows":
+		// 失败动作: 重启服务
+		options["OnFailure"] = "restart"
+
+		// 重启延迟: 单位为毫秒 (Milliseconds)
+		// 设置为 "0" 表示立即重启，设置为 "1000" 表示 1秒后重启
+		// 建议保留至少 1秒 (1000ms) 的缓冲，防止极端情况下的 CPU 飙升
+		options["RestartDelay"] = "1000"
+
+		// 重置失败计数的时间: 单位为秒 (Seconds)
+		// 意思是：如果服务连续运行了 24小时(86400秒)没有崩溃，那么之前的失败计数就会清零
+		options["ResetPeriod"] = "86400"
 	}
 
 	// 配置服务
@@ -120,22 +173,7 @@ func NewServiceManager(cfg *config.Config) (*ServiceManager, error) {
 		Description: "Pika 监控探针 - 采集系统性能指标并上报到服务端",
 		Arguments:   []string{"run", "--config", cfg.Path},
 		Executable:  execPath,
-		Option: service.KeyValue{
-			// Linux systemd 配置
-			"Restart":            "always",  // 总是重启
-			"RestartSec":         "10",      // 重启前等待 10 秒
-			"StartLimitInterval": "0",       // 无限制重启次数
-			"KillMode":           "process", // 只杀主进程
-
-			// Windows 配置
-			"OnFailure":    "restart", // 失败时重启
-			"ResetPeriod":  86400,     // 重置失败计数周期 (秒)
-			"RestartDelay": 10000,     // 重启延迟 (毫秒)
-
-			// 其他 Unix 系统 (upstart/launchd)
-			"KeepAlive": true, // 保持运行
-			"RunAtLoad": true, // 启动时运行
-		},
+		Option:      options,
 	}
 
 	// 创建 program
@@ -243,7 +281,7 @@ func (m *ServiceManager) Run() error {
 	signal.Notify(interrupt, os.Interrupt, syscall.SIGTERM)
 
 	// 启动 Agent
-	agent := startAgent(ctx, m.cfg)
+	a := startAgent(ctx, m.cfg)
 
 	// 等待中断信号
 	<-interrupt
@@ -251,7 +289,7 @@ func (m *ServiceManager) Run() error {
 	cancel()
 
 	// 等待 Agent 停止
-	agent.Stop()
+	a.Stop()
 	slog.Info("探针已停止")
 
 	return nil

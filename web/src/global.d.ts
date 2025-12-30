@@ -7,6 +7,7 @@ declare global {
             SystemNameEn: string;
             ICPCode: string;
             DefaultView: string;
+            Version: string;
         };
     }
 }

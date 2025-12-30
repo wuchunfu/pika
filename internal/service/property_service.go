@@ -8,6 +8,7 @@ import (
 
 	"github.com/dushixiang/pika/internal/models"
 	"github.com/dushixiang/pika/internal/repo"
+	"github.com/dushixiang/pika/pkg/version"
 	"github.com/dushixiang/pika/web"
 	"github.com/go-orz/cache"
 	"go.uber.org/zap"
@@ -117,6 +118,8 @@ func (s *PropertyService) GetSystemConfig(ctx context.Context) (*models.SystemCo
 	if err != nil {
 		return nil, fmt.Errorf("获取系统配置失败: %w", err)
 	}
+	// 设置系统版本
+	systemConfig.Version = version.Version
 	return &systemConfig, nil
 }
 

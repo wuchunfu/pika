@@ -23,8 +23,7 @@ const PublicFooter = () => {
                                 <Github className="h-3 w-3 group-hover:scale-110 transition-transform"/>
                                 <span className="underline decoration-slate-400 dark:decoration-cyan-700 underline-offset-2">Pika Monitor</span>
                             </a>
-                            <span className="text-slate-300 dark:text-cyan-900">|</span>
-                            <span className="text-slate-500 dark:text-cyan-500/80 tracking-wider">保持洞察 · 稳定运行</span>
+                            <span className="text-slate-500 dark:text-cyan-500/80 tracking-wider">{window.SystemConfig.Version}</span>
                             {/* ICP 备案号 */}
                             {icpCode && (
                                 <>

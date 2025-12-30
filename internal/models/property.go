@@ -62,6 +62,7 @@ type SystemConfig struct {
 	DefaultView  string `json:"defaultView"`  // 默认视图 grid | list
 	CustomCSS    string `json:"customCSS"`    // 自定义 CSS
 	CustomJS     string `json:"customJS"`     // 自定义 JS
+	Version      string `json:"-"`            // 系统版本
 }
 
 // AlertConfig 全局告警配置

@@ -8,7 +8,6 @@ import (
 
 	"github.com/dushixiang/pika/internal/config"
 	"github.com/dushixiang/pika/internal/handler"
-	"github.com/dushixiang/pika/internal/repo"
 	"github.com/dushixiang/pika/internal/service"
 	"github.com/dushixiang/pika/internal/vmclient"
 	"github.com/dushixiang/pika/internal/websocket"
@@ -37,15 +36,11 @@ func InitializeApp(logger *zap.Logger, db *gorm.DB, cfg *config.AppConfig) (*App
 		service.NewMetricService,
 		service.NewGeoIPService,
 		service.NewDDNSService,
+		service.NewSSHLoginService,
 
 		service.NewNotifier,
 		// WebSocket Manager
 		websocket.NewManager,
-
-		// Repositories
-		repo.NewTamperRepo,
-		repo.NewDDNSConfigRepo,
-		repo.NewDDNSRecordRepo,
 
 		// Handlers
 		handler.NewAgentHandler,
@@ -57,6 +52,7 @@ func InitializeApp(logger *zap.Logger, db *gorm.DB, cfg *config.AppConfig) (*App
 		handler.NewTamperHandler,
 		handler.NewDNSProviderHandler,
 		handler.NewDDNSHandler,
+		handler.NewSSHLoginHandler,
 
 		// App Components
 		wire.Struct(new(AppComponents), "*"),
@@ -75,6 +71,7 @@ type AppComponents struct {
 	TamperHandler      *handler.TamperHandler
 	DNSProviderHandler *handler.DNSProviderHandler
 	DDNSHandler        *handler.DDNSHandler
+	SSHLoginHandler    *handler.SSHLoginHandler
 
 	AgentService    *service.AgentService
 	MetricService   *service.MetricService
@@ -84,6 +81,7 @@ type AppComponents struct {
 	ApiKeyService   *service.ApiKeyService
 	TamperService   *service.TamperService
 	DDNSService     *service.DDNSService
+	SSHLoginService *service.SSHLoginService
 
 	WSManager *websocket.Manager
 	VMClient  *vmclient.VMClient

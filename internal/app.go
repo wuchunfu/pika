@@ -3,6 +3,7 @@ package internal
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -108,6 +109,13 @@ func setupApi(app *orz.App, components *AppComponents) {
 
 	e.Use(middleware.Recover())
 	e.Use(ErrorHandler(logger))
+	e.Use(middleware.RecoverWithConfig(middleware.RecoverConfig{
+		LogErrorFunc: func(c echo.Context, err error, stack []byte) error {
+			sugar := logger.Named("[PANIC RECOVER]").Sugar()
+			sugar.Error(fmt.Sprintf("%v %s\n", err, stack))
+			return err
+		},
+	}))
 
 	indexTemplate, err := template.New("index").Parse(web.IndexHtml())
 	if err != nil {
@@ -249,6 +257,12 @@ func setupApi(app *orz.App, components *AppComponents) {
 		adminApi.GET("/agents/:id/tamper/events", components.TamperHandler.GetTamperEvents)
 		adminApi.GET("/agents/:id/tamper/alerts", components.TamperHandler.GetTamperAlerts)
 
+		// SSH 登录监控管理（管理员功能）
+		adminApi.GET("/agents/:id/ssh-login/config", components.SSHLoginHandler.GetConfig)
+		adminApi.POST("/agents/:id/ssh-login/config", components.SSHLoginHandler.UpdateConfig)
+		adminApi.GET("/agents/:id/ssh-login/events", components.SSHLoginHandler.ListEvents)
+		adminApi.DELETE("/agents/:id/ssh-login/events", components.SSHLoginHandler.DeleteEvents)
+
 		// 通用属性管理
 		adminApi.GET("/properties/:id", components.PropertyHandler.GetProperty)
 		adminApi.PUT("/properties/:id", components.PropertyHandler.SetProperty)
@@ -306,6 +320,8 @@ func autoMigrate(database *gorm.DB) error {
 		&models.TamperAlert{},         // 防篡改告警
 		&models.DDNSConfig{},          // DDNS 配置
 		&models.DDNSRecord{},          // DDNS 记录
+		&models.SSHLoginConfig{},      // SSH 登录监控配置
+		&models.SSHLoginEvent{},       // SSH 登录事件
 	)
 }
 

@@ -21,10 +21,10 @@ type TamperService struct {
 	wsManager  *websocket.Manager
 }
 
-func NewTamperService(logger *zap.Logger, tamperRepo *repo.TamperRepo, wsManager *websocket.Manager) *TamperService {
+func NewTamperService(logger *zap.Logger, db *gorm.DB, wsManager *websocket.Manager) *TamperService {
 	return &TamperService{
 		logger:     logger,
-		tamperRepo: tamperRepo,
+		tamperRepo: repo.NewTamperRepo(db),
 		wsManager:  wsManager,
 	}
 }

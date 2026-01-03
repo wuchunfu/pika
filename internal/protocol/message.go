@@ -63,6 +63,10 @@ const (
 	// DDNS 消息
 	MessageTypeDDNSConfig   MessageType = "ddns_config"
 	MessageTypeDDNSIPReport MessageType = "ddns_ip_report"
+	// SSH 登录监控消息
+	MessageTypeSSHLoginConfig       MessageType = "ssh_login_config"
+	MessageTypeSSHLoginConfigResult MessageType = "ssh_login_config_result" // Agent 反馈配置应用结果
+	MessageTypeSSHLoginEvent        MessageType = "ssh_login_event"
 )
 
 type MetricType string
@@ -671,4 +675,32 @@ type LoginStatistics struct {
 	UniqueIPs        map[string]int `json:"uniqueIPs,omitempty"`        // 唯一IP统计
 	UniqueUsers      map[string]int `json:"uniqueUsers,omitempty"`      // 唯一用户统计
 	HighFrequencyIPs map[string]int `json:"highFrequencyIPs,omitempty"` // 高频IP (登录次数>10)
+}
+
+// ==================== SSH 登录监控相关数据结构 ====================
+
+// SSHLoginConfig SSH登录监控配置
+type SSHLoginConfig struct {
+	Enabled      bool `json:"enabled"`      // 是否启用监控
+	RecordFailed bool `json:"recordFailed"` // 是否记录失败登录
+}
+
+// SSHLoginConfigResult SSH登录监控配置应用结果（Agent 反馈）
+type SSHLoginConfigResult struct {
+	Success bool   `json:"success"`         // 配置应用是否成功
+	Enabled bool   `json:"enabled"`         // 当前启用状态
+	Message string `json:"message"`         // 结果描述信息
+	Error   string `json:"error,omitempty"` // 错误信息（如果失败）
+}
+
+// SSHLoginEvent SSH登录事件
+type SSHLoginEvent struct {
+	Username  string `json:"username"`            // 登录用户名
+	IP        string `json:"ip"`                  // 来源IP
+	Port      string `json:"port,omitempty"`      // 来源端口
+	Timestamp int64  `json:"timestamp"`           // 登录时间（毫秒时间戳）
+	Status    string `json:"status"`              // success/failed
+	Method    string `json:"method,omitempty"`    // 认证方式: password/publickey
+	TTY       string `json:"tty,omitempty"`       // 终端
+	SessionID string `json:"sessionId,omitempty"` // 会话ID
 }

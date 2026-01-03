@@ -1,5 +1,13 @@
 import {del, get, post, put} from './request';
-import type {Agent, LatestMetrics, TrafficStats, UpdateTrafficConfigRequest} from '@/types';
+import type {
+    Agent,
+    LatestMetrics,
+    SSHLoginConfig,
+    SSHLoginEventListResponse,
+    TrafficStats,
+    UpdateSSHLoginConfigRequest,
+    UpdateTrafficConfigRequest
+} from '@/types';
 
 export interface ListAgentsResponse {
     items: Agent[];
@@ -529,4 +537,46 @@ export interface GetServerUrlResponse {
 
 export const getServerUrl = () => {
     return post<GetServerUrlResponse>('/admin/server-url', {});
+};
+
+// SSH 登录监控相关接口
+
+// 获取 SSH 登录监控配置
+export const getSSHLoginConfig = async (agentId: string) => {
+    const response = await get<SSHLoginConfig>(`/admin/agents/${agentId}/ssh-login/config`);
+    return response.data;
+};
+
+// 更新 SSH 登录监控配置
+export const updateSSHLoginConfig = async (agentId: string, data: UpdateSSHLoginConfigRequest) => {
+    await post<SSHLoginConfig>(`/admin/agents/${agentId}/ssh-login/config`, data);
+};
+
+// 获取 SSH 登录事件列表
+export interface GetSSHLoginEventsParams {
+    page?: number;
+    pageSize?: number;
+    username?: string;
+    ip?: string;
+    status?: string;
+    startTime?: number;
+    endTime?: number;
+}
+
+export const getSSHLoginEvents = (agentId: string, params?: GetSSHLoginEventsParams) => {
+    const query = new URLSearchParams();
+    if (params?.page) query.append('page', params.page.toString());
+    if (params?.pageSize) query.append('pageSize', params.pageSize.toString());
+    if (params?.username) query.append('username', params.username);
+    if (params?.ip) query.append('ip', params.ip);
+    if (params?.status) query.append('status', params.status);
+    if (params?.startTime) query.append('startTime', params.startTime.toString());
+    if (params?.endTime) query.append('endTime', params.endTime.toString());
+
+    return get<SSHLoginEventListResponse>(`/admin/agents/${agentId}/ssh-login/events?${query.toString()}`);
+};
+
+// 删除 SSH 登录事件
+export const deleteSSHLoginEvents = (agentId: string) => {
+    return del(`/admin/agents/${agentId}/ssh-login/events`);
 };

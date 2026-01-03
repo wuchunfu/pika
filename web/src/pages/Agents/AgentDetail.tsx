@@ -2,8 +2,9 @@ import {useEffect, useState} from 'react';
 import {useNavigate, useParams, useSearchParams} from 'react-router-dom';
 import type {MenuProps, TabsProps} from 'antd';
 import {Alert, App, Button, Card, Descriptions, Dropdown, Space, Spin, Tabs, Tag} from 'antd';
-import {Activity, ArrowLeft, Clock, FileWarning, RefreshCw, Shield, Terminal} from 'lucide-react';
+import {Activity, ArrowLeft, Clock, FileWarning, Lock, RefreshCw, Shield, Terminal} from 'lucide-react';
 import TamperProtection from './TamperProtection.tsx';
+import SSHLoginMonitor from './SSHLoginMonitor.tsx';
 import {getAgentForAdmin, getAuditResult, sendAuditCommand, type VPSAuditResult} from '@/api/agent.ts';
 import type {Agent} from '@/types';
 import dayjs from 'dayjs';
@@ -223,6 +224,25 @@ const AgentDetail = () => {
                 <Alert
                     message="功能限制"
                     description="防篡改保护功能仅支持 Linux 系统。当前系统为 Windows 或其他系统，无法使用此功能。"
+                    type="warning"
+                    showIcon
+                />
+            ),
+        },
+        {
+            key: 'ssh-login',
+            label: (
+                <div className="flex items-center gap-2 text-sm">
+                    <Lock size={16}/>
+                    <div>SSH 登录监控</div>
+                </div>
+            ),
+            children: agent?.os.toLowerCase().includes('linux') ? (
+                <SSHLoginMonitor agentId={agent.id}/>
+            ) : (
+                <Alert
+                    message="功能限制"
+                    description="SSH 登录监控功能仅支持 Linux 系统。当前系统为 Windows 或其他系统，无法使用此功能。"
                     type="warning"
                     showIcon
                 />

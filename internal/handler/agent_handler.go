@@ -24,27 +24,30 @@ import (
 )
 
 type AgentHandler struct {
-	logger        *zap.Logger
-	agentService  *service.AgentService
-	metricService *service.MetricService
-	monitorSvc    *service.MonitorService
-	tamperService *service.TamperService
-	ddnsService   *service.DDNSService
-	wsManager     *ws.Manager
-	upgrader      websocket.Upgrader
+	logger          *zap.Logger
+	agentService    *service.AgentService
+	metricService   *service.MetricService
+	monitorSvc      *service.MonitorService
+	tamperService   *service.TamperService
+	ddnsService     *service.DDNSService
+	sshLoginService *service.SSHLoginService
+	wsManager       *ws.Manager
+	upgrader        websocket.Upgrader
 }
 
 func NewAgentHandler(logger *zap.Logger, agentService *service.AgentService, metricService *service.MetricService,
-	monitorService *service.MonitorService, tamperService *service.TamperService, ddnsService *service.DDNSService, wsManager *ws.Manager) *AgentHandler {
+	monitorService *service.MonitorService, tamperService *service.TamperService, ddnsService *service.DDNSService,
+	sshLoginService *service.SSHLoginService, wsManager *ws.Manager) *AgentHandler {
 
 	h := &AgentHandler{
-		logger:        logger,
-		agentService:  agentService,
-		metricService: metricService,
-		monitorSvc:    monitorService,
-		tamperService: tamperService,
-		ddnsService:   ddnsService,
-		wsManager:     wsManager,
+		logger:          logger,
+		agentService:    agentService,
+		metricService:   metricService,
+		monitorSvc:      monitorService,
+		tamperService:   tamperService,
+		ddnsService:     ddnsService,
+		sshLoginService: sshLoginService,
+		wsManager:       wsManager,
 	}
 
 	// 初始化upgrader，需要在创建handler之后因为需要引用h.checkOrigin
@@ -198,6 +201,24 @@ func (h *AgentHandler) handleWebSocketMessage(ctx context.Context, agentID strin
 			return err
 		}
 		return h.ddnsService.HandleIPReport(ctx, agentID, &ipReport)
+
+	case protocol.MessageTypeSSHLoginEvent:
+		// SSH 登录事件
+		var eventData protocol.SSHLoginEvent
+		if err := json.Unmarshal(data, &eventData); err != nil {
+			h.logger.Error("failed to unmarshal ssh login event", zap.Error(err))
+			return err
+		}
+		return h.sshLoginService.HandleEvent(agentID, eventData)
+
+	case protocol.MessageTypeSSHLoginConfigResult:
+		// SSH 登录监控配置应用结果
+		var resultData protocol.SSHLoginConfigResult
+		if err := json.Unmarshal(data, &resultData); err != nil {
+			h.logger.Error("failed to unmarshal ssh login config result", zap.Error(err))
+			return err
+		}
+		return h.sshLoginService.HandleConfigResult(agentID, resultData)
 
 	case protocol.MessageTypeTamperProtect:
 		// 防篡改配置响应

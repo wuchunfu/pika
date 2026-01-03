@@ -40,3 +40,5 @@ go.work.sum
 config.yaml
 agent.yaml
 playground
+web/node_modules
+web/dist

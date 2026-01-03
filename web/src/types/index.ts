@@ -477,5 +477,41 @@ export interface UpdateTrafficConfigRequest {
     trafficResetDay: number; // 流量重置日期(1-31), 0表示不自动重置
 }
 
+// SSH 登录监控相关
+export interface SSHLoginConfig {
+    id?: string;
+    agentId: string;
+    enabled: boolean;
+    recordFailed: boolean;
+    createdAt?: number;
+    updatedAt?: number;
+}
+
+export interface SSHLoginEvent {
+    id: string;
+    agentId: string;
+    username: string;
+    ip: string;
+    port?: string;
+    status: 'success' | 'failed';
+    method?: string;
+    tty?: string;
+    sessionId?: string;
+    timestamp: number;
+    createdAt: number;
+}
+
+export interface SSHLoginEventListResponse {
+    items: SSHLoginEvent[];
+    total: number;
+    page: number;
+    pageSize: number;
+}
+
+export interface UpdateSSHLoginConfigRequest {
+    enabled: boolean;
+    recordFailed: boolean;
+}
+
 // 导出 DDNS 相关类型
 export * from './ddns';

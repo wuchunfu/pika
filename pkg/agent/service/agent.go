@@ -17,6 +17,7 @@ import (
 	"github.com/dushixiang/pika/pkg/agent/collector"
 	"github.com/dushixiang/pika/pkg/agent/config"
 	"github.com/dushixiang/pika/pkg/agent/id"
+	"github.com/dushixiang/pika/pkg/agent/sshmonitor"
 	"github.com/dushixiang/pika/pkg/agent/tamper"
 	"github.com/dushixiang/pika/pkg/version"
 	"github.com/gorilla/websocket"
@@ -70,6 +71,7 @@ type Agent struct {
 	collectorMu      sync.RWMutex
 	collectorManager *collector.Manager
 	tamperProtector  *tamper.Protector
+	sshMonitor       *sshmonitor.Monitor
 }
 
 // New 创建 Agent 实例
@@ -78,6 +80,7 @@ func New(cfg *config.Config) *Agent {
 		cfg:             cfg,
 		idMgr:           id.NewManager(),
 		tamperProtector: tamper.NewProtector(),
+		sshMonitor:      sshmonitor.NewMonitor(),
 	}
 }
 
@@ -237,6 +240,11 @@ func (a *Agent) runOnce(ctx context.Context, onConnected func()) error {
 		a.tamperAlertLoop(ctx, conn, done)
 	})
 
+	// 启动 SSH 登录事件监控
+	wg.Go(func() {
+		a.sshLoginEventLoop(ctx, conn, done)
+	})
+
 	// 等待第一个错误或上下文取消
 	var returnErr error
 	select {
@@ -296,6 +304,8 @@ func (a *Agent) readLoop(conn *websocket.Conn, done chan struct{}) error {
 			go a.handleTamperProtect(msg.Data)
 		case protocol.MessageTypeDDNSConfig:
 			go a.handleDDNSConfig(msg.Data)
+		case protocol.MessageTypeSSHLoginConfig:
+			go a.handleSSHLoginConfig(conn, msg.Data)
 		case protocol.MessageTypeUninstall:
 			go a.handleUninstall()
 		default:
@@ -853,5 +863,91 @@ func (a *Agent) handleUninstall() {
 	// 卸载成功后，触发停止信号
 	if a.cancel != nil {
 		a.cancel()
+	}
+}
+
+// handleSSHLoginConfig 处理 SSH 登录监控配置
+func (a *Agent) handleSSHLoginConfig(conn *websocket.Conn, data json.RawMessage) {
+	var config protocol.SSHLoginConfig
+	if err := json.Unmarshal(data, &config); err != nil {
+		slog.Warn("解析SSH登录监控配置失败", "error", err)
+		// 发送失败结果
+		a.sendSSHLoginConfigResult(conn, false, false, "解析配置失败", err.Error())
+		return
+	}
+
+	slog.Info("收到SSH登录监控配置", "enabled", config.Enabled, "recordFailed", config.RecordFailed)
+
+	// 应用配置
+	ctx := context.Background()
+	if err := a.sshMonitor.Start(ctx, config); err != nil {
+		slog.Warn("应用SSH登录监控配置失败", "error", err)
+		// 发送失败结果，包含详细错误信息
+		a.sendSSHLoginConfigResult(conn, false, config.Enabled, "应用配置失败", err.Error())
+		return
+	}
+
+	// 发送成功结果
+	message := "配置已成功应用"
+	if config.Enabled {
+		message = "SSH登录监控已启用"
+	} else {
+		message = "SSH登录监控已禁用"
+	}
+	a.sendSSHLoginConfigResult(conn, true, config.Enabled, message, "")
+}
+
+// sendSSHLoginConfigResult 发送 SSH 登录监控配置应用结果
+func (a *Agent) sendSSHLoginConfigResult(conn *websocket.Conn, success bool, enabled bool, message string, errorMsg string) {
+	result := protocol.SSHLoginConfigResult{
+		Success: success,
+		Enabled: enabled,
+		Message: message,
+		Error:   errorMsg,
+	}
+
+	msg := protocol.OutboundMessage{
+		Type: protocol.MessageTypeSSHLoginConfigResult,
+		Data: result,
+	}
+
+	if err := conn.WriteJSON(msg); err != nil {
+		slog.Warn("发送SSH登录监控配置应用结果失败", "error", err)
+	}
+}
+
+// sshLoginEventLoop SSH登录事件监控循环
+func (a *Agent) sshLoginEventLoop(ctx context.Context, conn *safeConn, done chan struct{}) {
+	eventCh := a.sshMonitor.GetEvents()
+
+	for {
+		select {
+		case <-done:
+			return
+		case <-ctx.Done():
+			return
+		case event := <-eventCh:
+			// 转换为 protocol 结构
+			eventData := protocol.SSHLoginEvent{
+				Username:  event.Username,
+				IP:        event.IP,
+				Port:      event.Port,
+				Timestamp: event.Timestamp,
+				Status:    event.Status,
+				Method:    event.Method,
+				TTY:       event.TTY,
+				SessionID: event.SessionID,
+			}
+
+			// 上报到服务端
+			if err := conn.WriteJSON(protocol.OutboundMessage{
+				Type: protocol.MessageTypeSSHLoginEvent,
+				Data: eventData,
+			}); err != nil {
+				slog.Warn("发送SSH登录事件失败", "error", err)
+			} else {
+				slog.Info("已上报SSH登录事件", "user", event.Username, "ip", event.IP, "status", event.Status)
+			}
+		}
 	}
 }

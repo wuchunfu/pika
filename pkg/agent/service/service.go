@@ -12,6 +12,7 @@ import (
 	"github.com/dushixiang/pika/pkg/agent"
 	"github.com/dushixiang/pika/pkg/agent/config"
 	"github.com/dushixiang/pika/pkg/agent/id"
+	"github.com/dushixiang/pika/pkg/agent/sshmonitor"
 	"github.com/dushixiang/pika/pkg/agent/sysutil"
 	"github.com/dushixiang/pika/pkg/agent/updater"
 	"github.com/kardianos/service"
@@ -322,6 +323,12 @@ func UninstallAgent(cfgPath string) error {
 	// 卸载服务
 	if err := mgr.Uninstall(); err != nil {
 		return fmt.Errorf("卸载服务失败: %w", err)
+	}
+
+	// 清理 SSH 监控配置
+	monitor := sshmonitor.NewMonitor()
+	if err := monitor.Stop(); err != nil {
+		slog.Warn("清理SSH监控配置失败", "error", err)
 	}
 
 	// 删除配置文件

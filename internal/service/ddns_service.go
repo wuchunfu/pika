@@ -35,16 +35,14 @@ type DDNSService struct {
 }
 
 func NewDDNSService(
-	logger *zap.Logger,
-	configRepo *repo.DDNSConfigRepo,
-	recordRepo *repo.DDNSRecordRepo,
+	logger *zap.Logger, db *gorm.DB,
 	propertyService *PropertyService,
 	wsManager *websocket.Manager,
 ) *DDNSService {
 	s := &DDNSService{
 		logger:          logger,
-		ConfigRepo:      configRepo,
-		recordRepo:      recordRepo,
+		ConfigRepo:      repo.NewDDNSConfigRepo(db),
+		recordRepo:      repo.NewDDNSRecordRepo(db),
 		propertyService: propertyService,
 		wsManager:       wsManager,
 		ipCache:         syncx.NewSafeMap[string, *ipCacheData](),

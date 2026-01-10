@@ -309,7 +309,6 @@ func autoMigrate(database *gorm.DB) error {
 	return database.AutoMigrate(
 		&models.Agent{},         // 探针
 		&models.ApiKey{},        // ApiKey
-		&models.HostMetric{},    // 保留主机静态信息表
 		&models.AuditResult{},   // 审计历史
 		&models.Property{},      // 系统属性
 		&models.AlertRecord{},   // 告警记录

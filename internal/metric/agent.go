@@ -1,9 +1,6 @@
 package metric
 
-import (
-	"github.com/dushixiang/pika/internal/models"
-	"github.com/dushixiang/pika/internal/protocol"
-)
+import "github.com/dushixiang/pika/internal/protocol"
 
 // DiskSummary 磁盘汇总数据
 type DiskSummary struct {
@@ -30,7 +27,7 @@ type LatestMetrics struct {
 	Disk              *DiskSummary                    `json:"disk,omitempty"`
 	Network           *NetworkSummary                 `json:"network,omitempty"`
 	NetworkConnection *protocol.NetworkConnectionData `json:"networkConnection,omitempty"`
-	Host              *models.HostMetric              `json:"host,omitempty"`
+	Host              *protocol.HostInfoData          `json:"host,omitempty"`
 	GPU               []protocol.GPUData              `json:"gpu,omitempty"`
 	Temp              []protocol.TemperatureData      `json:"temperature,omitempty"`
 	Monitors          []protocol.MonitorData          `json:"monitors,omitempty"`

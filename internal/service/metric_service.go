@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/dushixiang/pika/internal/metric"
-	"github.com/dushixiang/pika/internal/models"
 	"github.com/dushixiang/pika/internal/protocol"
 	"github.com/dushixiang/pika/internal/repo"
 	"github.com/dushixiang/pika/internal/vmclient"
@@ -23,7 +22,6 @@ import (
 // MetricService 指标服务
 type MetricService struct {
 	logger          *zap.Logger
-	metricRepo      *repo.MetricRepo
 	agentRepo       *repo.AgentRepo
 	monitorRepo     *repo.MonitorRepo
 	propertyService *PropertyService
@@ -39,7 +37,6 @@ type MetricService struct {
 func NewMetricService(logger *zap.Logger, db *gorm.DB, propertyService *PropertyService, trafficService *TrafficService, vmClient *vmclient.VMClient) *MetricService {
 	return &MetricService{
 		logger:             logger,
-		metricRepo:         repo.NewMetricRepo(db),
 		agentRepo:          repo.NewAgentRepo(db),
 		monitorRepo:        repo.NewMonitorRepo(db),
 		propertyService:    propertyService,
@@ -161,21 +158,8 @@ func (s *MetricService) HandleMetricData(ctx context.Context, agentID string, me
 		if err := json.Unmarshal(data, &hostData); err != nil {
 			return err
 		}
-		// Host 信息仍然保存到 PostgreSQL（静态信息，不频繁变化）
-		hostMetric := &models.HostMetric{
-			AgentID:         agentID,
-			OS:              hostData.OS,
-			Platform:        hostData.Platform,
-			PlatformVersion: hostData.PlatformVersion,
-			KernelVersion:   hostData.KernelVersion,
-			KernelArch:      hostData.KernelArch,
-			Uptime:          hostData.Uptime,
-			BootTime:        hostData.BootTime,
-			Procs:           hostData.Procs,
-			Timestamp:       timestamp,
-		}
-		latestMetrics.Host = hostMetric
-		return s.metricRepo.SaveHostMetric(ctx, hostMetric)
+		latestMetrics.Host = &hostData
+		return nil
 
 	case protocol.MetricTypeGPU:
 		var gpuDataList []protocol.GPUData
@@ -356,20 +340,6 @@ func (s *MetricService) updateMonitorCache(agentID string, monitorData *protocol
 func (s *MetricService) GetLatestMetrics(agentID string) (*metric.LatestMetrics, bool) {
 	metrics, ok := s.latestCache.Get(agentID)
 	return metrics, ok
-}
-
-// DeleteAgentMetrics 删除探针的所有指标数据
-func (s *MetricService) DeleteAgentMetrics(ctx context.Context, agentID string) error {
-	// 1. 删除 PostgreSQL 中的主机信息
-	if err := s.metricRepo.DeleteAgentMetrics(ctx, agentID); err != nil {
-		s.logger.Error("删除 PostgreSQL 中的探针数据失败",
-			zap.String("agentID", agentID),
-			zap.Error(err))
-		// 继续删除 VictoriaMetrics 中的数据
-	}
-
-	// 2. 不主动删除 VictoriaMetrics 中的时间序列数据，利用过期机制自动删除数据
-	return nil
 }
 
 // GetAvailableNetworkInterfaces 获取探针的可用网卡列表（从 VictoriaMetrics 查询）

@@ -172,18 +172,21 @@ type LoadData struct {
 
 // HostInfoData 主机信息
 type HostInfoData struct {
-	Hostname             string `json:"hostname"`
-	Uptime               uint64 `json:"uptime"`
-	BootTime             uint64 `json:"bootTime"`
-	Procs                uint64 `json:"procs"`
-	OS                   string `json:"os"`
-	Platform             string `json:"platform"`
-	PlatformFamily       string `json:"platformFamily"`
-	PlatformVersion      string `json:"platformVersion"`
-	KernelVersion        string `json:"kernelVersion"`
-	KernelArch           string `json:"kernelArch"`
-	VirtualizationSystem string `json:"virtualizationSystem,omitempty"`
-	VirtualizationRole   string `json:"virtualizationRole,omitempty"`
+	Hostname             string  `json:"hostname"`
+	Uptime               uint64  `json:"uptime"`
+	BootTime             uint64  `json:"bootTime"`
+	Procs                uint64  `json:"procs"`
+	Load1                float64 `json:"load1"`
+	Load5                float64 `json:"load5"`
+	Load15               float64 `json:"load15"`
+	OS                   string  `json:"os"`
+	Platform             string  `json:"platform"`
+	PlatformFamily       string  `json:"platformFamily"`
+	PlatformVersion      string  `json:"platformVersion"`
+	KernelVersion        string  `json:"kernelVersion"`
+	KernelArch           string  `json:"kernelArch"`
+	VirtualizationSystem string  `json:"virtualizationSystem,omitempty"`
+	VirtualizationRole   string  `json:"virtualizationRole,omitempty"`
 }
 
 // GPUData GPU数据

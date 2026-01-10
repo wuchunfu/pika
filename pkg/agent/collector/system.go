@@ -3,6 +3,7 @@ package collector
 import (
 	"github.com/dushixiang/pika/internal/protocol"
 	"github.com/shirou/gopsutil/v4/host"
+	"github.com/shirou/gopsutil/v4/load"
 )
 
 // HostCollector 主机信息采集器
@@ -31,6 +32,12 @@ func (h *HostCollector) Collect() (*protocol.HostInfoData, error) {
 		PlatformVersion: hostInfo.PlatformVersion,
 		KernelVersion:   hostInfo.KernelVersion,
 		KernelArch:      hostInfo.KernelArch,
+	}
+
+	if loadAvg, err := load.Avg(); err == nil && loadAvg != nil {
+		hostData.Load1 = loadAvg.Load1
+		hostData.Load5 = loadAvg.Load5
+		hostData.Load15 = loadAvg.Load15
 	}
 
 	// 尝试获取虚拟化信息

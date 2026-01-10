@@ -59,8 +59,8 @@ export const getAgentPaging = (pageIndex: number = 1, pageSize: number = 10, nam
     if (status) {
         params.append('status', status);
     }
-    params.set('sortOrder', 'asc');
-    params.set('sortField', 'name');
+    params.set('sortOrder', 'descend');
+    params.set('sortField', 'weight');
     return get<ListAgentsResponse>(`/admin/agents?${params.toString()}`);
 };
 

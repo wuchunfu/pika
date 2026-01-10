@@ -528,7 +528,7 @@ func (a *Agent) collectAndSendAllMetrics(manager *collector.Manager) error {
 		hasError = true
 	}
 
-	// 主机信息
+	// 主机信息（包含 Load）
 	if err := manager.CollectAndSendHost(writer); err != nil {
 		slog.Warn("发送主机信息失败", "error", err)
 		hasError = true

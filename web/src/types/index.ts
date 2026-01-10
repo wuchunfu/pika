@@ -205,20 +205,23 @@ export interface NetworkSummary {
     totalInterfaces: number;      // 网卡数量
 }
 
-// 主机信息指标
-export interface HostMetric {
-    id: number;
-    agentId: string;
+// 主机信息
+export interface HostInfo {
     hostname: string;
-    os: string;
-    platform: string;
-    platformVersion: string;
-    kernelVersion: string;
-    kernelArch: string;
     uptime: number;          // 运行时间(秒)
     bootTime: number;        // 启动时间(Unix时间戳-秒)
     procs: number;           // 进程数
-    timestamp: number;       // 时间戳（毫秒）
+    load1: number;           // 1分钟平均负载
+    load5: number;           // 5分钟平均负载
+    load15: number;          // 15分钟平均负载
+    os: string;
+    platform: string;
+    platformFamily: string;
+    platformVersion: string;
+    kernelVersion: string;
+    kernelArch: string;
+    virtualizationSystem?: string;
+    virtualizationRole?: string;
 }
 
 // GPU 指标
@@ -412,7 +415,7 @@ export interface LatestMetrics {
     disk?: DiskSummary;       // 改为汇总数据
     network?: NetworkSummary; // 改为汇总数据
     networkConnection?: NetworkConnectionMetric; // 网络连接统计
-    host?: HostMetric;        // 主机信息
+    host?: HostInfo;          // 主机信息
     gpu?: GPUMetric[];        // GPU 列表
     temperature?: TemperatureMetric[];  // 温度传感器列表
 }

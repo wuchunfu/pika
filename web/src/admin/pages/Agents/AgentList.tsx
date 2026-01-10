@@ -174,18 +174,88 @@ const AgentList = () => {
             hideInSearch: true,
             width: 200,
             render: (_, record) => (
-                <>
-                    {record.tags && record.tags?.length > 0 ? (
-                        record.tags?.map((tag, index) => (
-                            <Tag key={index} color="blue" variant={'filled'} style={{marginBottom: 4}}>
-                                {tag}
-                            </Tag>
-                        ))
-                    ) : (
-                        '-'
-                    )}
-                </>
+                <div className={'flex items-center gap-1'}>
+                    {record.tags?.map((tag, index) => (
+                        <Tag key={index} color="blue" variant={'filled'}>
+                            {tag}
+                        </Tag>
+                    ))}
+                </div>
             ),
+        },
+        {
+            title: '状态',
+            dataIndex: 'status',
+            key: 'status',
+            hideInSearch: true,
+            width: 80,
+            render: (_, record) => (
+                <Tag color={record.status === 1 ? 'success' : 'default'}>
+                    {record.status === 1 ? '在线' : '离线'}
+                </Tag>
+            ),
+        },
+        {
+            title: '可见性',
+            dataIndex: 'visibility',
+            key: 'visibility',
+            hideInSearch: true,
+            width: 100,
+            render: (visibility) => (
+                <Tag color={visibility === 'public' ? 'green' : 'orange'}>
+                    {visibility === 'public' ? '匿名可见' : '登录可见'}
+                </Tag>
+            ),
+        },
+        {
+            title: '主机名',
+            dataIndex: 'hostname',
+            key: 'hostname',
+            ellipsis: true,
+            width: 150,
+        },
+        {
+            title: '状态筛选',
+            dataIndex: 'status',
+            valueType: 'select',
+            hideInTable: true,
+            valueEnum: {
+                online: {text: '在线'},
+                offline: {text: '离线'},
+            },
+        },
+        {
+            title: '版本',
+            dataIndex: 'version',
+            key: 'version',
+            hideInSearch: true,
+        },
+        {
+            title: '到期时间',
+            dataIndex: 'expireTime',
+            key: 'expireTime',
+            hideInSearch: true,
+            width: 100,
+            render: (val) => {
+                if (!val) return '-';
+                const expireDate = new Date(val as number);
+                const now = new Date();
+                const isExpired = expireDate < now;
+                const daysLeft = Math.ceil((expireDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+                return (
+                    <div className="flex flex-col gap-1">
+                        <div>{expireDate.toLocaleDateString('zh-CN')}</div>
+                        {isExpired ? (
+                            <Tag color="red" variant={'filled'}>已过期</Tag>
+                        ) : daysLeft <= 7 ? (
+                            <Tag color="orange" variant={'filled'}>{daysLeft}天后到期</Tag>
+                        ) : daysLeft <= 30 ? (
+                            <Tag color="gold" variant={'filled'}>{daysLeft}天后到期</Tag>
+                        ) : null}
+                    </div>
+                );
+            },
         },
         {
             title: '流量统计',
@@ -243,83 +313,11 @@ const AgentList = () => {
             },
         },
         {
-            title: '到期时间',
-            dataIndex: 'expireTime',
-            key: 'expireTime',
+            title: '排序权重',
+            dataIndex: 'weight',
+            key: 'weight',
             hideInSearch: true,
-            width: 100,
-            render: (val) => {
-                if (!val) return '-';
-                const expireDate = new Date(val as number);
-                const now = new Date();
-                const isExpired = expireDate < now;
-                const daysLeft = Math.ceil((expireDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-
-                return (
-                    <div className="flex flex-col gap-1">
-                        <div>{expireDate.toLocaleDateString('zh-CN')}</div>
-                        {isExpired ? (
-                            <Tag color="red" variant={'filled'}>已过期</Tag>
-                        ) : daysLeft <= 7 ? (
-                            <Tag color="orange" variant={'filled'}>{daysLeft}天后到期</Tag>
-                        ) : daysLeft <= 30 ? (
-                            <Tag color="gold" variant={'filled'}>{daysLeft}天后到期</Tag>
-                        ) : null}
-                    </div>
-                );
-            },
-        },
-        {
-            title: '状态',
-            dataIndex: 'status',
-            key: 'status',
-            hideInSearch: true,
-            width: 80,
-            render: (_, record) => (
-                <Tag color={record.status === 1 ? 'success' : 'default'}>
-                    {record.status === 1 ? '在线' : '离线'}
-                </Tag>
-            ),
-        },
-        {
-            title: '可见性',
-            dataIndex: 'visibility',
-            key: 'visibility',
-            hideInSearch: true,
-            width: 100,
-            render: (visibility) => (
-                <Tag color={visibility === 'public' ? 'green' : 'orange'}>
-                    {visibility === 'public' ? '匿名可见' : '登录可见'}
-                </Tag>
-            ),
-        },
-        {
-            title: '主机名',
-            dataIndex: 'hostname',
-            key: 'hostname',
-            ellipsis: true,
-            width: 150,
-        },
-        {
-            title: 'IP 地址',
-            dataIndex: 'ip',
-            key: 'ip',
-        },
-        {
-            title: '状态筛选',
-            dataIndex: 'status',
-            valueType: 'select',
-            hideInTable: true,
-            valueEnum: {
-                online: {text: '在线'},
-                offline: {text: '离线'},
-            },
-        },
-        {
-            title: '版本',
-            dataIndex: 'version',
-            key: 'version',
-            hideInSearch: true,
+            sorter: true,
         },
         {
             title: '最后活跃时间',

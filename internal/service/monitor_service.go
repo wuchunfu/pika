@@ -24,7 +24,6 @@ type MonitorService struct {
 	*repo.MonitorRepo
 	*orz.Service
 	agentRepo     *repo.AgentRepo
-	metricRepo    *repo.MetricRepo
 	metricService *MetricService
 	wsManager     *ws.Manager
 
@@ -45,7 +44,6 @@ func NewMonitorService(logger *zap.Logger, db *gorm.DB, metricService *MetricSer
 		Service:       orz.NewService(db),
 		MonitorRepo:   repo.NewMonitorRepo(db),
 		agentRepo:     repo.NewAgentRepo(db),
-		metricRepo:    repo.NewMetricRepo(db),
 		metricService: metricService,
 		wsManager:     wsManager,
 	}

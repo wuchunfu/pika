@@ -7,6 +7,7 @@ import (
 
 	"github.com/dushixiang/pika/internal/models"
 	"github.com/dushixiang/pika/internal/repo"
+
 	"go.uber.org/zap"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
@@ -24,6 +25,13 @@ func NewTrafficService(logger *zap.Logger, db *gorm.DB) *TrafficService {
 		agentRepo:       repo.NewAgentRepo(db),
 		alertRecordRepo: repo.NewAlertRecordRepo(db),
 	}
+}
+
+func (s *TrafficService) updateById(ctx context.Context, agentID string, stats *models.TrafficStatsData) error {
+	return s.agentRepo.UpdateById(ctx, &models.Agent{
+		ID:           agentID,
+		TrafficStats: datatypes.NewJSONType(*stats),
+	})
 }
 
 // UpdateAgentTraffic 更新探针流量统计(每次上报网络指标时调用)
@@ -46,16 +54,17 @@ func (s *TrafficService) UpdateAgentTraffic(ctx context.Context, agentID string,
 		stats.Type = "recv" // 默认只统计进站流量，向后兼容
 	}
 
-	// 初始化基线(首次统计)
+	now := time.Now().UnixMilli()
+	baselineChanged := false
+
+	// 初始化基线(首次统计或基线丢失)
 	if stats.BaselineRecv == 0 && stats.BaselineSend == 0 {
 		stats.BaselineRecv = currentRecvTotal
 		stats.BaselineSend = currentSentTotal
-		stats.Used = 0
 		if stats.PeriodStart == 0 {
-			stats.PeriodStart = time.Now().UnixMilli()
+			stats.PeriodStart = now
 		}
-		agent.TrafficStats = datatypes.NewJSONType(stats)
-		return s.agentRepo.UpdateById(ctx, &agent)
+		baselineChanged = true
 	}
 
 	// 检测计数器重置(探针重启)
@@ -76,22 +85,14 @@ func (s *TrafficService) UpdateAgentTraffic(ctx context.Context, agentID string,
 		if sendReset {
 			stats.BaselineSend = currentSentTotal
 		}
-		// 保持 Used 不变,避免丢失已统计的流量
-	} else {
-		// 根据配置的类型计算使用量
-		switch stats.Type {
-		case "recv": // 只统计进站流量
-			stats.Used = currentRecvTotal - stats.BaselineRecv
-		case "send": // 只统计出站流量
-			stats.Used = currentSentTotal - stats.BaselineSend
-		case "both": // 统计全部流量
-			recvUsed := currentRecvTotal - stats.BaselineRecv
-			sendUsed := currentSentTotal - stats.BaselineSend
-			stats.Used = recvUsed + sendUsed
-		default: // 默认只统计进站流量
-			stats.Used = currentRecvTotal - stats.BaselineRecv
-		}
+		baselineChanged = true
 	}
+
+	baseDelta := calculateBaseDelta(stats.Type, currentRecvTotal, currentSentTotal, stats.BaselineRecv, stats.BaselineSend)
+	if baselineChanged {
+		stats.UsedOffset = calculateOffset(stats.Used, baseDelta)
+	}
+	stats.Used = applyOffset(baseDelta, stats.UsedOffset)
 
 	// 检查告警(如果配置了限额)
 	if stats.Limit > 0 {
@@ -102,7 +103,7 @@ func (s *TrafficService) UpdateAgentTraffic(ctx context.Context, agentID string,
 	agent.TrafficStats = datatypes.NewJSONType(stats)
 
 	// 更新数据库
-	return s.agentRepo.UpdateById(ctx, &agent)
+	return s.updateById(ctx, agentID, &stats)
 }
 
 // checkTrafficAlerts 检查并发送流量告警
@@ -220,6 +221,7 @@ func (s *TrafficService) UpdateTrafficConfig(ctx context.Context, agentID string
 	// 如果是首次启用、禁用后重新启用、修改重置日期或修改流量类型，重置流量统计
 	if (!oldEnabled && stats.Enabled) || (stats.Enabled && resetDay != oldResetDay) || (stats.Enabled && stats.PeriodStart == 0) || (stats.Enabled && oldType != stats.Type && oldType != "") {
 		stats.Used = 0
+		stats.UsedOffset = 0
 		stats.PeriodStart = now
 		stats.BaselineRecv = 0 // 下次上报时会设置正确的基线
 		stats.BaselineSend = 0
@@ -230,12 +232,14 @@ func (s *TrafficService) UpdateTrafficConfig(ctx context.Context, agentID string
 
 	// 如果提供了 used 参数且大于 0，则使用该值
 	if used > 0 {
+		stats.UsedOffset = addOffset(stats.UsedOffset, calculateOffset(used, stats.Used))
 		stats.Used = used
 	}
 
 	// 如果禁用流量统计，清空相关数据
 	if !stats.Enabled {
 		stats.Used = 0
+		stats.UsedOffset = 0
 		stats.PeriodStart = 0
 		stats.BaselineRecv = 0
 		stats.BaselineSend = 0
@@ -244,9 +248,7 @@ func (s *TrafficService) UpdateTrafficConfig(ctx context.Context, agentID string
 		stats.AlertSent100 = false
 	}
 
-	agent.TrafficStats = datatypes.NewJSONType(stats)
-	agent.UpdatedAt = now
-	return s.agentRepo.UpdateById(ctx, &agent)
+	return s.updateById(ctx, agentID, &stats)
 }
 
 // GetTrafficStats 获取流量统计信息
@@ -313,6 +315,7 @@ func (s *TrafficService) ResetAgentTraffic(ctx context.Context, agentID string) 
 	stats := agent.TrafficStats.Data()
 
 	stats.Used = 0
+	stats.UsedOffset = 0
 	stats.BaselineRecv = 0 // 下次上报时会设置正确的基线
 	stats.BaselineSend = 0
 	stats.PeriodStart = now
@@ -320,14 +323,11 @@ func (s *TrafficService) ResetAgentTraffic(ctx context.Context, agentID string) 
 	stats.AlertSent90 = false
 	stats.AlertSent100 = false
 
-	agent.TrafficStats = datatypes.NewJSONType(stats)
-	agent.UpdatedAt = now
-
 	s.logger.Info("探针流量已重置",
 		zap.String("agentId", agentID),
 		zap.String("agentName", agent.Name))
 
-	return s.agentRepo.UpdateById(ctx, &agent)
+	return s.updateById(ctx, agentID, &stats)
 }
 
 // CheckAndResetTraffic 检查并重置所有到期的探针流量(定时任务调用)
@@ -407,6 +407,68 @@ func calculateNextResetDate(periodStart time.Time, resetDay int) time.Time {
 	}
 
 	return time.Date(nextYear, nextMonth, nextMonthResetDay, 0, 0, 0, 0, location)
+}
+
+func calculateBaseDelta(trafficType string, currentRecvTotal, currentSentTotal, baselineRecv, baselineSend uint64) uint64 {
+	switch trafficType {
+	case "recv":
+		return currentRecvTotal - baselineRecv
+	case "send":
+		return currentSentTotal - baselineSend
+	case "both":
+		recvUsed := currentRecvTotal - baselineRecv
+		sendUsed := currentSentTotal - baselineSend
+		return recvUsed + sendUsed
+	default:
+		return currentRecvTotal - baselineRecv
+	}
+}
+
+func calculateOffset(targetUsed, baseDelta uint64) int64 {
+	const maxInt64 = int64(^uint64(0) >> 1)
+	const minInt64 = -maxInt64 - 1
+
+	if targetUsed >= baseDelta {
+		diff := targetUsed - baseDelta
+		if diff > uint64(maxInt64) {
+			return maxInt64
+		}
+		return int64(diff)
+	}
+
+	diff := baseDelta - targetUsed
+	if diff > uint64(maxInt64) {
+		return minInt64
+	}
+	return -int64(diff)
+}
+
+func applyOffset(baseDelta uint64, offset int64) uint64 {
+	if offset >= 0 {
+		return baseDelta + uint64(offset)
+	}
+	const minInt64 = -1 - (int64(^uint64(0) >> 1))
+	if offset == minInt64 {
+		return 0
+	}
+	neg := uint64(-offset)
+	if neg > baseDelta {
+		return 0
+	}
+	return baseDelta - neg
+}
+
+func addOffset(base, delta int64) int64 {
+	const maxInt64 = int64(^uint64(0) >> 1)
+	const minInt64 = -maxInt64 - 1
+
+	if delta > 0 && base > maxInt64-delta {
+		return maxInt64
+	}
+	if delta < 0 && base < minInt64-delta {
+		return minInt64
+	}
+	return base + delta
 }
 
 // TrafficStats 流量统计信息

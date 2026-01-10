@@ -37,6 +37,7 @@ type TrafficStatsData struct {
 	Type         string `json:"type"`         // 统计类型: "recv"进站, "send"出站, "both"全部
 	Limit        uint64 `json:"limit"`        // 流量限额(字节), 0表示不限制
 	Used         uint64 `json:"used"`         // 当前周期已使用流量(字节)
+	UsedOffset   int64  `json:"usedOffset"`   // 手动调整流量偏移(字节), 允许为负数
 	ResetDay     int    `json:"resetDay"`     // 流量重置日期(1-31), 0表示不自动重置
 	PeriodStart  int64  `json:"periodStart"`  // 当前周期开始时间(时间戳毫秒)
 	BaselineRecv uint64 `json:"baselineRecv"` // 当前周期流量基线(BytesRecvTotal)

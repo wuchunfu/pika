@@ -56,7 +56,8 @@ func (s *SSHLoginService) GetConfig(ctx context.Context, agentID string) (*model
 func (s *SSHLoginService) UpdateConfig(ctx context.Context, agentID string, enabled bool) error {
 	// 保存配置到数据库
 	config := models.SSHLoginConfigData{
-		Enabled: enabled,
+		Enabled:     enabled,
+		ApplyStatus: "pending",
 	}
 
 	var agentForUpdate = models.Agent{
@@ -68,7 +69,12 @@ func (s *SSHLoginService) UpdateConfig(ctx context.Context, agentID string, enab
 	}
 
 	// 下发配置到 Agent
-	return s.sendConfigToAgent(agentID, enabled)
+	go func() {
+		if err := s.sendConfigToAgent(agentID, enabled); err != nil {
+			s.logger.Error("下发SSH登录监控配置到 Agent 失败", zap.String("agentId", agentID), zap.Error(err))
+		}
+	}()
+	return nil
 }
 
 // sendConfigToAgent 下发配置到 Agent

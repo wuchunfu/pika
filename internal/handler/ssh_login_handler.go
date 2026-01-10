@@ -49,20 +49,13 @@ func (h *SSHLoginHandler) GetConfig(c echo.Context) error {
 // POST /api/agents/:id/ssh-login/config
 func (h *SSHLoginHandler) UpdateConfig(c echo.Context) error {
 	agentID := c.Param("id")
-	if agentID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"message": "探针ID不能为空",
-		})
-	}
 
 	var req struct {
 		Enabled bool `json:"enabled"`
 	}
 
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"message": "请求参数错误",
-		})
+		return err
 	}
 
 	err := h.service.UpdateConfig(c.Request().Context(), agentID, req.Enabled)

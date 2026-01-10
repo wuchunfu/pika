@@ -89,8 +89,9 @@ func (s *TamperService) UpdateConfig(ctx context.Context, agentID string, enable
 
 	// 创建或更新配置
 	newConfig := &models.TamperProtectConfigData{
-		Enabled: enabled,
-		Paths:   paths,
+		Enabled:     enabled,
+		Paths:       paths,
+		ApplyStatus: "pending",
 	}
 
 	// 保存配置到数据库
@@ -98,22 +99,23 @@ func (s *TamperService) UpdateConfig(ctx context.Context, agentID string, enable
 		return err
 	}
 
-	// 下发增量配置到探针
-	if err := s.sendIncrementalConfigToAgent(agentID, added, removed); err != nil {
-		s.logger.Warn("下发防篡改配置到探针失败",
-			zap.String("agentId", agentID),
-			zap.Strings("added", added),
-			zap.Strings("removed", removed),
-			zap.Error(err))
-		// 不影响配置保存结果，只记录警告
-	} else if len(added) > 0 || len(removed) > 0 {
-		s.logger.Info("成功下发防篡改配置到探针",
-			zap.String("agentId", agentID),
-			zap.Strings("added", added),
-			zap.Strings("removed", removed),
-			zap.Int("totalPaths", len(paths)))
-	}
-
+	go func() {
+		// 下发增量配置到探针
+		if err := s.sendIncrementalConfigToAgent(agentID, added, removed); err != nil {
+			s.logger.Warn("下发防篡改配置到探针失败",
+				zap.String("agentId", agentID),
+				zap.Strings("added", added),
+				zap.Strings("removed", removed),
+				zap.Error(err))
+			// 不影响配置保存结果，只记录警告
+		} else if len(added) > 0 || len(removed) > 0 {
+			s.logger.Info("成功下发防篡改配置到探针",
+				zap.String("agentId", agentID),
+				zap.Strings("added", added),
+				zap.Strings("removed", removed),
+				zap.Int("totalPaths", len(paths)))
+		}
+	}()
 	return nil
 }
 

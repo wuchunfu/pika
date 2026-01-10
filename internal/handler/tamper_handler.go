@@ -33,9 +33,7 @@ func (h *TamperHandler) UpdateTamperConfig(c echo.Context) error {
 	}
 
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]interface{}{
-			"message": "请求参数错误",
-		})
+		return err
 	}
 
 	err := h.tamperService.UpdateConfig(c.Request().Context(), agentID, req.Enabled, req.Paths)

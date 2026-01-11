@@ -161,9 +161,11 @@ func (s *SSHLoginService) HandleEvent(ctx context.Context, agentID string, event
 		zap.String("ip", eventData.IP),
 		zap.String("status", eventData.Status))
 
-	if eventData.Status == "success" {
-		s.sendLoginSuccessNotification(agentID, eventData)
+	if config.IsIPWhitelisted(eventData.IP) {
+		s.logger.Info("IP在白名单中，忽略事件", zap.String("agentId", agentID), zap.String("ip", eventData.IP))
+		return nil
 	}
+	s.sendLoginSuccessNotification(agentID, eventData)
 
 	return nil
 }

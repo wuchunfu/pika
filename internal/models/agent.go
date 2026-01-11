@@ -1,6 +1,11 @@
 package models
 
-import "gorm.io/datatypes"
+import (
+	"net"
+	"strings"
+
+	"gorm.io/datatypes"
+)
 
 // Agent 探针信息
 type Agent struct {
@@ -57,9 +62,33 @@ type TamperProtectConfigData struct {
 
 // SSHLoginConfigData SSH登录监控配置数据
 type SSHLoginConfigData struct {
-	Enabled      bool   `json:"enabled"`                // 是否启用
-	ApplyStatus  string `json:"applyStatus,omitempty"`  // 配置应用状态: success/failed/pending
-	ApplyMessage string `json:"applyMessage,omitempty"` // 应用结果消息
+	Enabled      bool     `json:"enabled"`                // 是否启用
+	IPWhitelist  []string `json:"ipWhitelist,omitempty"`  // IP白名单，白名单中的IP只记录不发送通知，支持 IP 或 CIDR
+	ApplyStatus  string   `json:"applyStatus,omitempty"`  // 配置应用状态: success/failed/pending
+	ApplyMessage string   `json:"applyMessage,omitempty"` // 应用结果消息
+}
+
+func (r SSHLoginConfigData) IsIPWhitelisted(ip string) bool {
+	if len(r.IPWhitelist) == 0 {
+		return false
+	}
+	parsedIP := net.ParseIP(ip)
+	if parsedIP == nil {
+		return false
+	}
+	for _, whitelistIP := range r.IPWhitelist {
+		if whitelistIP == ip {
+			return true
+		}
+		// 检查是否为 CIDR 格式
+		if strings.Contains(whitelistIP, "/") {
+			_, ipNet, err := net.ParseCIDR(whitelistIP)
+			if err == nil && ipNet.Contains(parsedIP) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (Agent) TableName() string {

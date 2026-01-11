@@ -67,6 +67,7 @@ export interface TamperProtectConfig {
 
 export interface SSHLoginConfigData {
     enabled: boolean;
+    ipWhitelist?: string[];  // IP白名单，白名单中的IP只记录不发送通知
     applyStatus?: string;
     applyMessage?: string;
 }
@@ -537,6 +538,7 @@ export interface UpdateTrafficConfigRequest {
 // SSH 登录监控相关
 export interface SSHLoginConfig {
     enabled: boolean;
+    ipWhitelist?: string[];  // IP白名单，白名单中的IP只记录不发送通知
     applyStatus?: string;  // 配置应用状态: success/failed/pending
     applyMessage?: string; // 应用结果消息
 }
@@ -557,6 +559,7 @@ export interface SSHLoginEvent {
 
 export interface UpdateSSHLoginConfigRequest {
     enabled: boolean;
+    ipWhitelist?: string[];  // IP白名单，白名单中的IP只记录不发送通知
 }
 
 // 导出 DDNS 相关类型

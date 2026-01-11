@@ -1,10 +1,35 @@
 import React, {useEffect} from 'react';
-import {Alert, App, Button, Card, Form, Space, Switch} from 'antd';
+import {Alert, App, Button, Card, Form, Input, Space, Switch} from 'antd';
 import {Save, Terminal} from 'lucide-react';
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
 import type {SSHLoginConfig as SSHLoginConfigType} from '@/types';
 import {getSSHLoginConfig, updateSSHLoginConfig} from '@/api/agent';
 import {getErrorMessage} from '@/lib/utils';
+
+const {TextArea} = Input;
+
+// 验证 IP 地址格式（支持 IPv4 和 CIDR）
+const validateIPOrCIDR = (value: string): boolean => {
+    // IPv4 地址正则
+    const ipv4Regex = /^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+    // CIDR 格式正则 (IPv4/prefix)
+    const cidrRegex = /^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/(3[0-2]|[12]?[0-9])$/;
+
+    return ipv4Regex.test(value) || cidrRegex.test(value);
+};
+
+// 解析文本为 IP 数组
+const parseIPWhitelist = (text: string): string[] => {
+    return text
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+};
+
+// 格式化 IP 数组为文本
+const formatIPWhitelist = (ips: string[]): string => {
+    return ips.join('\n');
+};
 
 interface SSHLoginConfigProps {
     agentId: string;
@@ -25,8 +50,24 @@ const SSHLoginConfig: React.FC<SSHLoginConfigProps> = ({agentId}) => {
     const saveMutation = useMutation({
         mutationFn: async () => {
             const values = form.getFieldsValue();
+            const ipWhitelistText = values.ipWhitelistText || '';
+            const ipWhitelist = parseIPWhitelist(ipWhitelistText);
+
+            // 验证所有 IP 地址格式
+            const invalidIPs: string[] = [];
+            ipWhitelist.forEach(ip => {
+                if (!validateIPOrCIDR(ip)) {
+                    invalidIPs.push(ip);
+                }
+            });
+
+            if (invalidIPs.length > 0) {
+                throw new Error(`以下 IP 地址或 CIDR 格式不正确：\n${invalidIPs.join('\n')}`);
+            }
+
             return updateSSHLoginConfig(agentId, {
                 enabled: values.enabled,
+                ipWhitelist: ipWhitelist,
             });
         },
         onSuccess: () => {
@@ -44,10 +85,12 @@ const SSHLoginConfig: React.FC<SSHLoginConfigProps> = ({agentId}) => {
         if (config) {
             form.setFieldsValue({
                 enabled: config.enabled || false,
+                ipWhitelistText: formatIPWhitelist(config.ipWhitelist || []),
             });
         } else {
             form.setFieldsValue({
                 enabled: false,
+                ipWhitelistText: '',
             });
         }
     }, [config, form]);
@@ -78,6 +121,7 @@ const SSHLoginConfig: React.FC<SSHLoginConfigProps> = ({agentId}) => {
                     layout="vertical"
                     initialValues={{
                         enabled: false,
+                        ipWhitelistText: '',
                     }}
                 >
                     <Form.Item
@@ -89,6 +133,17 @@ const SSHLoginConfig: React.FC<SSHLoginConfigProps> = ({agentId}) => {
                         <Switch
                             checkedChildren="已启用"
                             unCheckedChildren="已禁用"
+                        />
+                    </Form.Item>
+
+                    <Form.Item
+                        label="IP 白名单"
+                        name="ipWhitelistText"
+                        extra={'白名单中的 IP 地址登录时只记录不发送通知。每行一个 IP 地址或 CIDR 网段，例如：192.168.1.1 或 192.168.1.0/24'}
+                    >
+                        <TextArea
+                            rows={6}
+                            placeholder={'每行一个 IP 地址或 CIDR 网段，例如：\n192.168.1.1\n192.168.1.0/24\n10.0.0.0/8'}
                         />
                     </Form.Item>
                 </Form>

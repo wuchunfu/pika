@@ -18,7 +18,7 @@ const MonitorCard = ({monitor, displayMode}: {
 }) => {
     // 为每个监控卡片查询历史数据
     const {data: historyData} = useQuery<GetMetricsResponse>({
-        queryKey: ['monitorHistory', monitor.id, '1h'],
+        queryKey: ['monitorHistory', monitor.id, '12h'], // 对应后端 60 秒步长
         queryFn: async () => {
             const response = await getMonitorHistory(monitor.id, {range: '1h'});
             return response.data;

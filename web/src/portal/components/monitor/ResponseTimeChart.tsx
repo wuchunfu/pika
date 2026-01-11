@@ -24,7 +24,7 @@ interface ResponseTimeChartProps {
  */
 export const ResponseTimeChart = ({monitorId, monitorStats}: ResponseTimeChartProps) => {
     const [selectedAgent, setSelectedAgent] = useState<string>('all');
-    const [timeRange, setTimeRange] = useState<string>('1h');
+    const [timeRange, setTimeRange] = useState<string>('12h'); // 对应后端 60 秒步长
     const [customRange, setCustomRange] = useState<{ start: number; end: number } | null>(null);
     const isMobile = useIsMobile();
     const customStart = timeRange === 'custom' ? customRange?.start : undefined;

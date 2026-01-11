@@ -16,7 +16,6 @@ const TrafficStats: React.FC<TrafficStatsProps> = ({agentId}) => {
     const [form] = Form.useForm();
     const queryClient = useQueryClient();
     const [enabled, setEnabled] = useState(false);
-    const [editingUsed, setEditingUsed] = useState(false);
 
     // 获取流量统计
     const {data: stats, isLoading} = useQuery<TrafficStatsType>({
@@ -33,18 +32,15 @@ const TrafficStats: React.FC<TrafficStatsProps> = ({agentId}) => {
         mutationFn: async () => {
             const values = form.getFieldsValue();
             const limitBytes = enabled ? (values.trafficLimit || 0) * 1024 * 1024 * 1024 : 0;
-            const usedBytes = editingUsed && values.trafficUsed ? values.trafficUsed * 1024 * 1024 * 1024 : 0;
             return updateTrafficConfig(agentId, {
                 enabled: enabled,
                 type: values.trafficType || 'recv',
                 limit: limitBytes,
-                used: usedBytes,
                 resetDay: enabled ? (values.trafficResetDay || 0) : 0,
             });
         },
         onSuccess: () => {
             message.success('配置已保存');
-            setEditingUsed(false);
             queryClient.invalidateQueries({queryKey: ['trafficStats', agentId]});
         },
         onError: (error: unknown) => {
@@ -279,20 +275,9 @@ const TrafficStats: React.FC<TrafficStatsProps> = ({agentId}) => {
                             </Form.Item>
 
                             <Form.Item
-                                label={
-                                    <div className="flex items-center gap-2">
-                                        <span>已使用流量</span>
-                                        <Switch
-                                            size="small"
-                                            checked={editingUsed}
-                                            onChange={setEditingUsed}
-                                            checkedChildren="编辑中"
-                                            unCheckedChildren="锁定"
-                                        />
-                                    </div>
-                                }
+                                label="已使用流量"
                                 name="trafficUsed"
-                                extra={editingUsed ? "手动设置已使用的流量大小(GB)" : "当前已使用的流量（只读）"}
+                                extra="当前已使用的流量（只读）"
                             >
                                 <InputNumber
                                     min={0}
@@ -301,7 +286,7 @@ const TrafficStats: React.FC<TrafficStatsProps> = ({agentId}) => {
                                     placeholder="已使用流量(GB)"
                                     style={{width: '100%'}}
                                     addonAfter="GB"
-                                    disabled={!editingUsed}
+                                    disabled
                                 />
                             </Form.Item>
 

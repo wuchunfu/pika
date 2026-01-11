@@ -59,19 +59,26 @@ func (s *TrafficService) UpdateAgentTraffic(ctx context.Context, agentID string,
 	now := time.Now().UnixMilli()
 	baselineChanged := false
 
+	if stats.PeriodStart == 0 {
+		stats.PeriodStart = now
+	}
+
+	needRecv := stats.Type == "recv" || stats.Type == "both"
+	needSend := stats.Type == "send" || stats.Type == "both"
+
 	// 初始化基线(首次统计或基线丢失)
-	if stats.BaselineRecv == 0 && stats.BaselineSend == 0 {
+	if needRecv && stats.BaselineRecv == 0 {
 		stats.BaselineRecv = currentRecvTotal
+		baselineChanged = true
+	}
+	if needSend && stats.BaselineSend == 0 {
 		stats.BaselineSend = currentSentTotal
-		if stats.PeriodStart == 0 {
-			stats.PeriodStart = now
-		}
 		baselineChanged = true
 	}
 
 	// 检测计数器重置(探针重启)
-	recvReset := currentRecvTotal < stats.BaselineRecv
-	sendReset := currentSentTotal < stats.BaselineSend
+	recvReset := needRecv && currentRecvTotal < stats.BaselineRecv
+	sendReset := needSend && currentSentTotal < stats.BaselineSend
 
 	if recvReset || sendReset {
 		s.logger.Warn("检测到流量计数器重置",
@@ -208,8 +215,7 @@ func formatBytes(bytes uint64) string {
 }
 
 // UpdateTrafficConfig 更新流量配置
-// used: 如果大于0，则使用该值作为已使用流量；如果为0，则保持当前值或重置
-func (s *TrafficService) UpdateTrafficConfig(ctx context.Context, agentID string, enabled bool, trafficType string, limit uint64, resetDay int, used uint64) error {
+func (s *TrafficService) UpdateTrafficConfig(ctx context.Context, agentID string, enabled bool, trafficType string, limit uint64, resetDay int) error {
 	if resetDay < 0 || resetDay > 31 {
 		return fmt.Errorf("重置日期必须在0-31之间")
 	}
@@ -252,12 +258,6 @@ func (s *TrafficService) UpdateTrafficConfig(ctx context.Context, agentID string
 		stats.AlertSent80 = false
 		stats.AlertSent90 = false
 		stats.AlertSent100 = false
-	}
-
-	// 如果提供了 used 参数且大于 0，则使用该值
-	if used > 0 {
-		stats.UsedOffset = addOffset(stats.UsedOffset, calculateOffset(used, stats.Used))
-		stats.Used = used
 	}
 
 	// 如果禁用流量统计，清空相关数据
@@ -448,51 +448,15 @@ func calculateBaseDelta(trafficType string, currentRecvTotal, currentSentTotal, 
 	}
 }
 
-func calculateOffset(targetUsed, baseDelta uint64) int64 {
-	const maxInt64 = int64(^uint64(0) >> 1)
-	const minInt64 = -maxInt64 - 1
-
-	if targetUsed >= baseDelta {
-		diff := targetUsed - baseDelta
-		if diff > uint64(maxInt64) {
-			return maxInt64
-		}
-		return int64(diff)
-	}
-
-	diff := baseDelta - targetUsed
-	if diff > uint64(maxInt64) {
-		return minInt64
-	}
-	return -int64(diff)
-}
-
-func applyOffset(baseDelta uint64, offset int64) uint64 {
-	if offset >= 0 {
-		return baseDelta + uint64(offset)
-	}
-	const minInt64 = -1 - (int64(^uint64(0) >> 1))
-	if offset == minInt64 {
+func calculateOffset(currentUsed, baseDelta uint64) uint64 {
+	if currentUsed <= baseDelta {
 		return 0
 	}
-	neg := uint64(-offset)
-	if neg > baseDelta {
-		return 0
-	}
-	return baseDelta - neg
+	return currentUsed - baseDelta
 }
 
-func addOffset(base, delta int64) int64 {
-	const maxInt64 = int64(^uint64(0) >> 1)
-	const minInt64 = -maxInt64 - 1
-
-	if delta > 0 && base > maxInt64-delta {
-		return maxInt64
-	}
-	if delta < 0 && base < minInt64-delta {
-		return minInt64
-	}
-	return base + delta
+func applyOffset(baseDelta, offset uint64) uint64 {
+	return baseDelta + offset
 }
 
 // TrafficStats 流量统计信息

@@ -281,7 +281,6 @@ func (h *AgentHandler) UpdateTrafficConfig(c echo.Context) error {
 		Enabled  bool   `json:"enabled"`
 		Type     string `json:"type"` // 流量类型: recv/send/both
 		Limit    uint64 `json:"limit"`
-		Used     uint64 `json:"used"` // 手动设置已使用流量(可选)
 		ResetDay int    `json:"resetDay"`
 	}
 
@@ -290,7 +289,7 @@ func (h *AgentHandler) UpdateTrafficConfig(c echo.Context) error {
 	}
 
 	ctx := c.Request().Context()
-	if err := h.trafficService.UpdateTrafficConfig(ctx, agentID, req.Enabled, req.Type, req.Limit, req.ResetDay, req.Used); err != nil {
+	if err := h.trafficService.UpdateTrafficConfig(ctx, agentID, req.Enabled, req.Type, req.Limit, req.ResetDay); err != nil {
 		return err
 	}
 

@@ -1,5 +1,5 @@
 import React, { type ReactElement, useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, App, Button, Card, Select, Space, Tabs, Typography } from 'antd';
+import { Alert, App, Button, Card, Select, Space, Tabs, Typography, Input } from 'antd';
 import { CopyIcon } from 'lucide-react';
 import { listApiKeys } from '@/api/apiKey.ts';
 import { getServerUrl } from '@/api/agent.ts';
@@ -37,6 +37,7 @@ const AgentInstall = () => {
     const [selectedOS, setSelectedOS] = useState<OSType>(DEFAULT_OS);
     const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
     const [selectedApiKey, setSelectedApiKey] = useState<string>('');
+    const [customHostname, setCustomHostname] = useState<string>('');
     const [loading, setLoading] = useState<boolean>(true);
 
     // 服务器地址相关状态
@@ -131,8 +132,12 @@ const AgentInstall = () => {
         if (!backendServerUrl || !selectedApiKey) {
             return '';
         }
-        return `curl -fsSL ${backendServerUrl}/api/agent/install.sh?token=${selectedApiKey} | sudo bash`;
-    }, [backendServerUrl, selectedApiKey]);
+        let cmd = `curl -fsSL ${backendServerUrl}/api/agent/install.sh?token=${selectedApiKey} | sudo bash`;
+        if (customHostname) {
+            cmd = `curl -fsSL ${backendServerUrl}/api/agent/install.sh?token=${selectedApiKey} | sudo bash -s -- --name "${customHostname}"`;
+        }
+        return cmd;
+    }, [backendServerUrl, selectedApiKey, customHostname]);
 
     // API Key 选择器选项
     const apiKeyOptions = useMemo(
@@ -207,35 +212,50 @@ const AgentInstall = () => {
         );
     }, [backendServerUrl, frontendUrl]);
 
-    // API Token 选择组件
     const ApiChooser = useCallback(() => (
-        <Card type="inner" title="选择 API Token">
+        <Card type="inner" title="配置选项">
             <Space direction="vertical" className="w-full">
-                {apiKeys.length === 0 ? (
-                    <Alert
-                        message="暂无可用的 API Token"
-                        description={
-                            <span>
-                                请先前往 <a href="/admin/api-keys">API密钥管理</a> 页面生成一个 API Token
-                            </span>
-                        }
-                        type="warning"
-                        showIcon
-                        className="mt-2"
+                <div>
+                    <div className="mb-1 text-gray-600 dark:text-slate-400">选择 API Token</div>
+                    {apiKeys.length === 0 ? (
+                        <Alert
+                            message="暂无可用的 API Token"
+                            description={
+                                <span>
+                                    请先前往 <a href="/admin/api-keys">API密钥管理</a> 页面生成一个 API Token
+                                </span>
+                            }
+                            type="warning"
+                            showIcon
+                            className="mt-2"
+                        />
+                    ) : (
+                        <Select
+                            className="w-full"
+                            value={selectedApiKey}
+                            onChange={setSelectedApiKey}
+                            options={apiKeyOptions}
+                            loading={loading}
+                            placeholder="请选择 API Token"
+                        />
+                    )}
+                </div>
+
+                <div>
+                    <div className="mb-1 text-gray-600 dark:text-slate-400">
+                        自定义主机名 <span className="text-xs text-gray-400">(可选，留空则使用系统主机名)</span>
+                    </div>
+                    <Input
+                        placeholder="请输入自定义主机名，例如: my-server-01"
+                        value={customHostname}
+                        onChange={e => setCustomHostname(e.target.value)}
+                        className="w-full"
+                        allowClear
                     />
-                ) : (
-                    <Select
-                        className="w-full mt-2"
-                        value={selectedApiKey}
-                        onChange={setSelectedApiKey}
-                        options={apiKeyOptions}
-                        loading={loading}
-                        placeholder="请选择 API Token"
-                    />
-                )}
+                </div>
             </Space>
         </Card>
-    ), [apiKeys, selectedApiKey, apiKeyOptions, loading]);
+    ), [apiKeys, selectedApiKey, apiKeyOptions, loading, customHostname]);
 
     // 一键安装组件
     const InstallByOneClick = useCallback(() => (
@@ -342,7 +362,7 @@ Invoke-WebRequest -Uri "${backendServerUrl}${config.downloadUrl}?key=${selectedA
                 },
                 {
                     title: '2. 注册探针',
-                    command: `.\\${AGENT_NAME_EXE} register --endpoint "${backendServerUrl}" --token "${selectedApiKey}"`
+                    command: `.\\${AGENT_NAME_EXE} register --endpoint "${backendServerUrl}" --token "${selectedApiKey}"${customHostname ? ` --name "${customHostname}"` : ''}`
                 },
                 {
                     title: '3. 验证安装',
@@ -370,14 +390,14 @@ curl -L "${backendServerUrl}${config.downloadUrl}?key=${selectedApiKey}" -o ${AG
             },
             {
                 title: '4. 注册探针',
-                command: `sudo ${AGENT_NAME} register --endpoint "${backendServerUrl}" --token "${selectedApiKey}"`
+                command: `sudo ${AGENT_NAME} register --endpoint "${backendServerUrl}" --token "${selectedApiKey}"${customHostname ? ` --name "${customHostname}"` : ''}`
             },
             {
                 title: '5. 验证安装',
                 command: `sudo ${AGENT_NAME} status`
             }
         ];
-    }, [osConfigs, backendServerUrl, selectedApiKey]);
+    }, [osConfigs, backendServerUrl, selectedApiKey, customHostname]);
 
     // 手动安装组件
     const InstallByManual = useCallback(() => (

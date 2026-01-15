@@ -111,6 +111,25 @@ echo_warn() {
     echo -e "${YELLOW}[WARN]${NC} $1"
 }
 
+# 解析参数
+AGENT_NAME_CUSTOM=""
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --name)
+            AGENT_NAME_CUSTOM="$2"
+            shift # past argument
+            shift # past value
+            ;;
+        *)
+            shift # past argument
+            ;;
+    esac
+done
+
+if [ -n "$AGENT_NAME_CUSTOM" ]; then
+    echo_info "使用自定义探针名称: $AGENT_NAME_CUSTOM"
+fi
+
 # 检测操作系统和架构
 detect_platform() {
     OS=$(uname -s | awk '{print tolower($0)}')
@@ -187,7 +206,11 @@ register_agent() {
     local token="` + token + `"
 
     echo_info "正在注册探针..."
-    /usr/local/bin/$AGENT_NAME register --endpoint "$endpoint" --token "$token" --yes
+    if [ -n "$AGENT_NAME_CUSTOM" ]; then
+        /usr/local/bin/$AGENT_NAME register --endpoint "$endpoint" --token "$token" --name "$AGENT_NAME_CUSTOM" --yes
+    else
+        /usr/local/bin/$AGENT_NAME register --endpoint "$endpoint" --token "$token" --yes
+    fi
 }
 
 # 主流程

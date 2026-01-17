@@ -1,10 +1,24 @@
 import React, {useEffect, useState} from 'react';
-import {Alert, App, Button, Card, DatePicker, Descriptions, Form, InputNumber, Progress, Select, Space, Statistic, Switch, Tag} from 'antd';
+import {
+    Alert,
+    App,
+    Button,
+    Card,
+    Descriptions,
+    Form,
+    InputNumber,
+    Progress,
+    Select,
+    Space,
+    Statistic,
+    Switch,
+    Tag
+} from 'antd';
 import {Activity, RotateCcw, Save} from 'lucide-react';
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
 import {getTrafficStats, resetAgentTraffic, updateTrafficConfig} from '@/api/agent';
 import {getErrorMessage} from '@/lib/utils';
-import type {TrafficStats as TrafficStatsType} from '@/types';
+import type {TrafficStats as TrafficStatsType, UpdateTrafficConfigRequest} from '@/types';
 import dayjs from 'dayjs';
 
 interface TrafficStatsProps {
@@ -29,16 +43,7 @@ const TrafficStats: React.FC<TrafficStatsProps> = ({agentId}) => {
 
     // 保存配置 mutation
     const saveMutation = useMutation({
-        mutationFn: async () => {
-            const values = form.getFieldsValue();
-            const limitBytes = enabled ? (values.trafficLimit || 0) * 1024 * 1024 * 1024 : 0;
-            return updateTrafficConfig(agentId, {
-                enabled: enabled,
-                type: values.trafficType || 'recv',
-                limit: limitBytes,
-                resetDay: enabled ? (values.trafficResetDay || 0) : 0,
-            });
-        },
+        mutationFn: (data: UpdateTrafficConfigRequest) => updateTrafficConfig(agentId, data),
         onSuccess: () => {
             message.success('配置已保存');
             queryClient.invalidateQueries({queryKey: ['trafficStats', agentId]});
@@ -48,6 +53,22 @@ const TrafficStats: React.FC<TrafficStatsProps> = ({agentId}) => {
             message.error(getErrorMessage(error, '配置保存失败'));
         },
     });
+
+    const handleSave = async () => {
+        try {
+            const values = enabled ? await form.validateFields() : form.getFieldsValue();
+            const limitValue = typeof values.trafficLimit === 'number' ? values.trafficLimit : 0;
+            const limitBytes = enabled ? limitValue * 1024 * 1024 * 1024 : 0;
+            saveMutation.mutate({
+                enabled: enabled,
+                type: values.trafficType || 'recv',
+                limit: limitBytes,
+                resetDay: enabled ? (values.trafficResetDay || 0) : 0,
+            });
+        } catch (error) {
+            // 表单验证失败
+        }
+    };
 
     // 重置流量 mutation
     const resetMutation = useMutation({
@@ -139,7 +160,9 @@ const TrafficStats: React.FC<TrafficStatsProps> = ({agentId}) => {
                             <Statistic
                                 title="已使用流量"
                                 value={formatBytes(stats.used)}
-                                valueStyle={{color: getProgressColor(usagePercent)}}
+                                styles={{
+                                    content: {color: getProgressColor(usagePercent)}
+                                }}
                             />
                             <Statistic
                                 title="流量限额"
@@ -148,7 +171,9 @@ const TrafficStats: React.FC<TrafficStatsProps> = ({agentId}) => {
                             <Statistic
                                 title="剩余流量"
                                 value={formatBytes(stats.remaining)}
-                                valueStyle={{color: stats.remaining > 0 ? '#52c41a' : '#ff4d4f'}}
+                                styles={{
+                                    content: {color: stats.remaining > 0 ? '#52c41a' : '#ff4d4f'}
+                                }}
                             />
                         </div>
 
@@ -210,7 +235,7 @@ const TrafficStats: React.FC<TrafficStatsProps> = ({agentId}) => {
                     <Button
                         type="primary"
                         icon={<Save size={16}/>}
-                        onClick={() => saveMutation.mutate()}
+                        onClick={handleSave}
                         loading={saveMutation.isPending}
                     >
                         保存配置
@@ -261,11 +286,14 @@ const TrafficStats: React.FC<TrafficStatsProps> = ({agentId}) => {
                             <Form.Item
                                 label="流量限额"
                                 name="trafficLimit"
-                                rules={[{required: true, message: '请输入流量限额'}]}
-                                extra="设置流量限额(GB)，0表示仅统计不限制"
+                                rules={[
+                                    {required: true, message: '请输入流量限额'},
+                                    {type: 'number', min: 1, message: '流量限额必须大于0'},
+                                ]}
+                                extra="设置流量限额(GB)，必须大于0"
                             >
                                 <InputNumber
-                                    min={0}
+                                    min={1}
                                     step={1}
                                     precision={0}
                                     placeholder="请输入流量限额(GB)"

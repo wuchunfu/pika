@@ -405,7 +405,7 @@ const AgentList = () => {
                         >
                             详情
                         </Button>
-                        <Dropdown menu={{items: menuItems}} trigger={['click']}>
+                        <Dropdown menu={{items: menuItems}} trigger={['click']} placement="bottomRight">
                             <Button
                                 type="link"
                                 icon={<MoreVertical size={14}/>}

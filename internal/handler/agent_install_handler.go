@@ -3,6 +3,7 @@ package handler
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/dushixiang/pika"
 	"github.com/dushixiang/pika/pkg/version"
@@ -73,6 +74,13 @@ func getServerURL(c echo.Context) string {
 	return scheme + "://" + host
 }
 
+func bashSingleQuote(value string) string {
+	if value == "" {
+		return "''"
+	}
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+}
+
 func (h *AgentHandler) GetServerUrl(c echo.Context) error {
 	serverUrl := getServerURL(c)
 	return orz.Ok(c, orz.Map{
@@ -89,6 +97,8 @@ func (h *AgentHandler) GetInstallScript(c echo.Context) error {
 
 	// 使用统一的 getServerURL 函数获取服务器地址（支持反向代理）
 	serverUrl := getServerURL(c)
+	customName := strings.TrimSpace(c.QueryParam("name"))
+	customNameLiteral := bashSingleQuote(customName)
 
 	script := `#!/bin/bash
 set -e
@@ -112,7 +122,7 @@ echo_warn() {
 }
 
 # 解析参数
-AGENT_NAME_CUSTOM=""
+AGENT_NAME_CUSTOM=` + customNameLiteral + `
 while [[ $# -gt 0 ]]; do
     case $1 in
         --name)

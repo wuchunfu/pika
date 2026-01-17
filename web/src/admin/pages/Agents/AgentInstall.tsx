@@ -37,7 +37,7 @@ const AgentInstall = () => {
     const [selectedOS, setSelectedOS] = useState<OSType>(DEFAULT_OS);
     const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
     const [selectedApiKey, setSelectedApiKey] = useState<string>('');
-    const [customHostname, setCustomHostname] = useState<string>('');
+    const [customAgentName, setCustomAgentName] = useState<string>('');
     const [loading, setLoading] = useState<boolean>(true);
 
     // 服务器地址相关状态
@@ -132,12 +132,10 @@ const AgentInstall = () => {
         if (!backendServerUrl || !selectedApiKey) {
             return '';
         }
-        let cmd = `curl -fsSL ${backendServerUrl}/api/agent/install.sh?token=${selectedApiKey} | sudo bash`;
-        if (customHostname) {
-            cmd = `curl -fsSL ${backendServerUrl}/api/agent/install.sh?token=${selectedApiKey} | sudo bash -s -- --name "${customHostname}"`;
-        }
-        return cmd;
-    }, [backendServerUrl, selectedApiKey, customHostname]);
+        const trimmedName = customAgentName.trim();
+        const nameParam = trimmedName ? `&name=${encodeURIComponent(trimmedName)}` : '';
+        return `curl -fsSL ${backendServerUrl}/api/agent/install.sh?token=${selectedApiKey}${nameParam} | sudo bash`;
+    }, [backendServerUrl, selectedApiKey, customAgentName]);
 
     // API Key 选择器选项
     const apiKeyOptions = useMemo(
@@ -243,19 +241,19 @@ const AgentInstall = () => {
 
                 <div>
                     <div className="mb-1 text-gray-600 dark:text-slate-400">
-                        自定义主机名 <span className="text-xs text-gray-400">(可选，留空则使用系统主机名)</span>
+                        自定义名称 <span className="text-xs text-gray-400">(可选，留空则使用主机名)</span>
                     </div>
                     <Input
-                        placeholder="请输入自定义主机名，例如: my-server-01"
-                        value={customHostname}
-                        onChange={e => setCustomHostname(e.target.value)}
+                        placeholder="请输入自定义名称，例如: my-server-01"
+                        value={customAgentName}
+                        onChange={e => setCustomAgentName(e.target.value)}
                         className="w-full"
                         allowClear
                     />
                 </div>
             </Space>
         </Card>
-    ), [apiKeys, selectedApiKey, apiKeyOptions, loading, customHostname]);
+    ), [apiKeys, selectedApiKey, apiKeyOptions, loading, customAgentName]);
 
     // 一键安装组件
     const InstallByOneClick = useCallback(() => (
@@ -350,6 +348,8 @@ ${agentCmd} version`;
     const getManualInstallSteps = useCallback((os: OSType): InstallStep[] => {
         const config = osConfigs[os];
 
+        const trimmedName = customAgentName.trim();
+
         if (os.startsWith('windows')) {
             return [
                 {
@@ -362,7 +362,7 @@ Invoke-WebRequest -Uri "${backendServerUrl}${config.downloadUrl}?key=${selectedA
                 },
                 {
                     title: '2. 注册探针',
-                    command: `.\\${AGENT_NAME_EXE} register --endpoint "${backendServerUrl}" --token "${selectedApiKey}"${customHostname ? ` --name "${customHostname}"` : ''}`
+                    command: `.\\${AGENT_NAME_EXE} register --endpoint "${backendServerUrl}" --token "${selectedApiKey}"${trimmedName ? ` --name "${trimmedName}"` : ''}`
                 },
                 {
                     title: '3. 验证安装',
@@ -390,14 +390,14 @@ curl -L "${backendServerUrl}${config.downloadUrl}?key=${selectedApiKey}" -o ${AG
             },
             {
                 title: '4. 注册探针',
-                command: `sudo ${AGENT_NAME} register --endpoint "${backendServerUrl}" --token "${selectedApiKey}"${customHostname ? ` --name "${customHostname}"` : ''}`
+                command: `sudo ${AGENT_NAME} register --endpoint "${backendServerUrl}" --token "${selectedApiKey}"${trimmedName ? ` --name "${trimmedName}"` : ''}`
             },
             {
                 title: '5. 验证安装',
                 command: `sudo ${AGENT_NAME} status`
             }
         ];
-    }, [osConfigs, backendServerUrl, selectedApiKey, customHostname]);
+    }, [osConfigs, backendServerUrl, selectedApiKey, customAgentName]);
 
     // 手动安装组件
     const InstallByManual = useCallback(() => (

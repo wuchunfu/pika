@@ -27,7 +27,7 @@ func (h *AgentHandler) DownloadAgent(c echo.Context) error {
 	if _, err := h.apiKeyService.ValidateApiKey(c.Request().Context(), apiKey); err != nil {
 		// API Key 校验失败，尝试 IP 白名单兜底（兼容旧版 Agent 自动更新）
 		clientIP := c.RealIP()
-		isOnline, checkErr := h.agentService.IsAgentOnlineByIP(c.Request().Context(), clientIP)
+		isOnline, checkErr := h.agentService.IsAgentByIP(c.Request().Context(), clientIP)
 		if checkErr != nil {
 			h.logger.Error("check agent online by ip failed", zap.String("ip", clientIP), zap.Error(checkErr))
 			return orz.NewError(500, "系统内部错误")

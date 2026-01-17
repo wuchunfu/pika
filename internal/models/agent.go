@@ -12,6 +12,7 @@ type Agent struct {
 	ID         string                      `gorm:"primaryKey" json:"id"`                  // 探针ID (UUID)
 	Name       string                      `gorm:"index" json:"name"`                     // 探针名称
 	Hostname   string                      `gorm:"index" json:"hostname,omitempty"`       // 主机名
+	IP         string                      `gorm:"index" json:"ip,omitempty"`             // 连接 IP 地址
 	IPv4       string                      `gorm:"index" json:"ipv4,omitempty"`           // 公网 IPv4 地址
 	IPv6       string                      `gorm:"index" json:"ipv6,omitempty"`           // 公网 IPv6 地址
 	OS         string                      `json:"os"`                                    // 操作系统

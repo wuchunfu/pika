@@ -63,6 +63,7 @@ func (s *AgentService) RegisterAgent(ctx context.Context, ip string, info *proto
 		// 更新现有探针信息（允许主机名、名称等变化）
 		now := time.Now().UnixMilli()
 		existingAgent.Hostname = info.Hostname
+		existingAgent.IP = ip
 		existingAgent.OS = info.OS
 		existingAgent.Arch = info.Arch
 		existingAgent.Version = info.Version
@@ -88,6 +89,7 @@ func (s *AgentService) RegisterAgent(ctx context.Context, ip string, info *proto
 		ID:         info.ID, // 使用客户端持久化的 ID
 		Name:       info.Name,
 		Hostname:   info.Hostname,
+		IP:         ip,
 		OS:         info.OS,
 		Arch:       info.Arch,
 		Version:    info.Version,
@@ -151,18 +153,16 @@ func (s *AgentService) ListOnlineAgents(ctx context.Context) ([]models.Agent, er
 	return s.AgentRepo.FindOnlineAgents(ctx)
 }
 
-// IsAgentOnlineByIP 检查指定公网IP是否存在在线的探针
-func (s *AgentService) IsAgentOnlineByIP(ctx context.Context, ip string) (bool, error) {
-	agent, err := s.AgentRepo.FindByIP(ctx, ip)
+// IsAgentByIP 检查指定公网IP是否为探针
+func (s *AgentService) IsAgentByIP(ctx context.Context, ip string) (bool, error) {
+	_, err := s.AgentRepo.FindByIP(ctx, ip)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return false, nil
 		}
 		return false, err
 	}
-
-	// 状态 1 表示在线
-	return agent.Status == 1, nil
+	return true, nil
 }
 
 // HandleCommandResponse 处理指令响应

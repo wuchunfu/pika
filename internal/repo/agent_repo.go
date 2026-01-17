@@ -48,7 +48,7 @@ func (r *AgentRepo) FindOnlineAgents(ctx context.Context) ([]models.Agent, error
 func (r *AgentRepo) FindByIP(ctx context.Context, ip string) (*models.Agent, error) {
 	var agent models.Agent
 	err := r.db.WithContext(ctx).
-		Where("ipv4 = ? OR ipv6 = ?", ip, ip).
+		Where("ip = ? or ipv4 = ? OR ipv6 = ?", ip, ip).
 		First(&agent).Error
 	if err != nil {
 		return nil, err

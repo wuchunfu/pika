@@ -488,7 +488,7 @@ const AgentList = () => {
                         key: 'register',
                         label: '注册探针',
                         icon: <Plus size={16}/>,
-                        onClick: () => navigate('/admin/agents-install'),
+                        onClick: () => navigate('/admin/agents-install/one-click'),
                         type: 'primary',
                     },
                     {

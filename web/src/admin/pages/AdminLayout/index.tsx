@@ -230,7 +230,7 @@ const AdminLayout = () => {
                             <Button
                                 type="text"
                                 icon={<BookOpen className="h-4 w-4" strokeWidth={2}/>}
-                                onClick={() => navigate('/admin/agents-install')}
+                                onClick={() => navigate('/admin/agents-install/one-click')}
                                 className="!h-9 !items-center !rounded-full !px-3 !text-xs !text-white hover:!bg-blue-500/10"
                             >
                                 部署指南

@@ -9,7 +9,8 @@ const PublicLayout = lazy(() => import('@portal/pages/PublicLayout'));
 const AdminLayout = lazy(() => import('@admin/pages/AdminLayout'));
 const AgentListPage = lazy(() => import('@admin/pages/Agents/AgentList'));
 const AgentDetailPage = lazy(() => import('@admin/pages/Agents/AgentDetail'));
-const AgentInstallPage = lazy(() => import('@admin/pages/Agents/AgentInstall'));
+const AgentInstallOneClickPage = lazy(() => import('@admin/pages/Agents/AgentInstallOneClick'));
+const AgentInstallManualPage = lazy(() => import('@admin/pages/Agents/AgentInstallManual'));
 const ApiKeyListPage = lazy(() => import('@admin/pages/ApiKeys/ApiKeyList'));
 const SettingsPage = lazy(() => import('@admin/pages/Settings'));
 const ServerListPage = lazy(() => import('@portal/pages/ServerList.tsx'));
@@ -91,7 +92,15 @@ const router = createBrowserRouter([
             },
             {
                 path: 'agents-install',
-                element: lazyLoad(AgentInstallPage),
+                element: <Navigate to="/admin/agents-install/one-click" replace/>,
+            },
+            {
+                path: 'agents-install/one-click',
+                element: lazyLoad(AgentInstallOneClickPage),
+            },
+            {
+                path: 'agents-install/manual',
+                element: lazyLoad(AgentInstallManualPage),
             },
             {
                 path: 'api-keys',

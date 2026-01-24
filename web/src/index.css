@@ -3,64 +3,13 @@
 /* Tailwind v4 暗色模式配置 */
 @variant dark (&:where(.dark, .dark *));
 
-/* 全局样式 */
-* {
-    scrollbar-width: thin;
-}
-
 /* 全局背景色 */
 body {
     background-color: white;
-    scrollbar-gutter: stable;
 }
 
 body.dark {
-    background-color: #141414;
-}
-
-/* 滚动条样式 */
-::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
-}
-
-::-webkit-scrollbar-track {
-    background: rgb(241, 245, 249);
-    border-radius: 5px;
-    margin: 2px;
-}
-
-::-webkit-scrollbar-thumb {
-    background: rgb(203, 213, 225);
-    border-radius: 5px;
-    border: 2px solid rgb(241, 245, 249);
-    transition: background-color 0.2s;
-}
-
-::-webkit-scrollbar-thumb:hover {
-    background: rgb(148, 163, 184);
-}
-
-::-webkit-scrollbar-thumb:active {
-    background: rgb(100, 116, 139);
-}
-
-/* 暗色模式滚动条 */
-.dark ::-webkit-scrollbar-track {
-    background: rgb(30, 41, 59);
-}
-
-.dark ::-webkit-scrollbar-thumb {
-    background: rgb(71, 85, 105);
-    border-color: rgb(30, 41, 59);
-}
-
-.dark ::-webkit-scrollbar-thumb:hover {
-    background: rgb(100, 116, 139);
-}
-
-.dark ::-webkit-scrollbar-thumb:active {
-    background: rgb(148, 163, 184);
+    background-color: #05050a;
 }
 
 /* 标签过滤器滚动条样式 */

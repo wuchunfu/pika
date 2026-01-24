@@ -12,7 +12,6 @@ import {
     Globe,
     HardDrive,
     LinkIcon,
-    Loader2,
     MemoryStick,
     Network,
     Thermometer,
@@ -27,19 +26,11 @@ import ServerCard from "@portal/components/ServerCard.tsx";
 import NetworkStatCard from "@portal/components/NetworkStatCard.tsx";
 import {formatBytes, formatSpeed, formatUptime} from "@portal/utils/util.ts";
 import {isExpired} from "@portal/utils/server.ts";
+import {LoadingSpinner} from "@portal/components/LoadingSpinner.tsx";
 
 interface AgentWithMetrics extends Agent {
     metrics?: LatestMetrics;
 }
-
-const LoadingSpinner = () => (
-    <div className="flex min-h-screen items-center justify-center bg-[#f0f2f5] dark:bg-[#05050a]">
-        <div className="flex flex-col items-center gap-3">
-            <Loader2 className="h-8 w-8 animate-spin text-cyan-500"/>
-            <p className="text-sm text-cyan-500 font-mono">数据加载中...</p>
-        </div>
-    </div>
-);
 
 interface EmptyStateProps {
     title: string;

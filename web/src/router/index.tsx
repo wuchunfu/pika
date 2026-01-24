@@ -22,7 +22,7 @@ const DDNSPage = lazy(() => import('@admin/pages/DDNS'));
 const AlertRecordListPage = lazy(() => import('@admin/pages/AlertRecords'));
 
 const LoadingFallback = () => (
-    <div className="flex min-h-[200px] w-full items-center justify-center text-gray-500">
+    <div className="flex h-[75vh] w-full items-center justify-center text-gray-500 dark:text-cyan-300">
         页面加载中...
     </div>
 );
@@ -49,7 +49,7 @@ const router = createBrowserRouter([
     },
     // 公开页面 - 不需要登录
     {
-        element: lazyLoad(PublicLayout),
+        element: <PublicLayout/>,
         children: [
             {
                 path: '/',

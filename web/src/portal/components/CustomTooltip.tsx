@@ -14,41 +14,30 @@ type CustomTooltipProps = {
         };
     }>;
     label?: string | number;
-    variant?: 'light' | 'dark';
     unit?: string;
+    className?: string;
 };
 
-export const CustomTooltip = ({active, payload, label, variant = 'light', unit = '%'}: CustomTooltipProps) => {
+export const CustomTooltip = ({active, payload, label, unit = '%', className}: CustomTooltipProps) => {
     if (!active || !payload || payload.length === 0) {
         return null;
     }
 
-    const isDark = variant === 'dark';
-
     // 从 payload 中获取完整的时间戳信息（如果有的话）
     const fullTimestamp = payload[0]?.payload?.timestamp;
     const displayLabel = fullTimestamp
-        ? dayjs(fullTimestamp).format(isDark ? 'YYYY-MM-DD HH:mm:ss' : 'MM-DD HH:mm')
+        ? dayjs(fullTimestamp).format('MM-DD HH:mm')
         : label;
 
     return (
         <div className={cn(
-            "rounded-md border px-3 py-2 text-xs shadow-xl",
-            isDark
-                ? "border-cyan-700/50 bg-[#0a0b10]/95 backdrop-blur-sm"
-                : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-lg"
+            "rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-lg px-3 py-2 text-xs",
+            className
         )}>
-            <p className={cn(
-                "font-semibold",
-                isDark
-                    ? "font-mono text-cyan-300 text-xs tracking-wider uppercase"
-                    : "text-slate-700 dark:text-white mb-2"
-            )}>
+            <p className="font-semibold text-slate-700 dark:text-white mb-2">
                 {displayLabel}
             </p>
-            <div className={cn(
-                isDark ? "mt-1 space-y-1" : "space-y-1"
-            )}>
+            <div className="space-y-1">
                 {payload.map((entry, index) => {
                     if (!entry) {
                         return null;
@@ -63,18 +52,13 @@ export const CustomTooltip = ({active, payload, label, variant = 'light', unit =
                         : entry.value;
 
                     return (
-                        <p key={`${entry.dataKey ?? index}`} className={cn(
-                            "flex items-center gap-2",
-                            isDark ? "text-cyan-500" : "text-xs"
-                        )}>
+                        <p key={`${entry.dataKey ?? index}`} className="flex items-center gap-2 text-xs">
                             <span
                                 className="inline-block h-2 w-2 rounded-full"
                                 style={{backgroundColor: dotColor}}
                             />
-                            <span className={isDark ? "" : "text-slate-600 dark:text-slate-400"}>
-                                {title}: <span className={cn(
-                                isDark ? "" : "font-semibold text-slate-900 dark:text-white"
-                            )}>{value}{unit}</span>
+                            <span className="text-slate-600 dark:text-slate-400">
+                                {title}: <span className="font-semibold text-slate-900 dark:text-white">{value}{unit}</span>
                             </span>
                         </p>
                     );

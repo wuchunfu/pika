@@ -270,6 +270,37 @@ func (h *AgentHandler) BatchUpdateTags(c echo.Context) error {
 	})
 }
 
+// BatchUpdateVisibility 批量更新探针可见性
+func (h *AgentHandler) BatchUpdateVisibility(c echo.Context) error {
+	var req struct {
+		AgentIDs   []string `json:"agentIds"`
+		Visibility string   `json:"visibility"`
+	}
+
+	if err := c.Bind(&req); err != nil {
+		return orz.NewError(400, "请求参数错误")
+	}
+
+	if len(req.AgentIDs) == 0 {
+		return orz.NewError(400, "探针ID列表不能为空")
+	}
+
+	// 验证可见性参数
+	if req.Visibility != "public" && req.Visibility != "private" {
+		return orz.NewError(400, "可见性参数错误，必须是 public 或 private")
+	}
+
+	ctx := c.Request().Context()
+	if err := h.agentService.BatchUpdateVisibility(ctx, req.AgentIDs, req.Visibility); err != nil {
+		return err
+	}
+
+	return orz.Ok(c, orz.Map{
+		"message": "批量修改可见性成功",
+		"count":   len(req.AgentIDs),
+	})
+}
+
 // UpdateTrafficConfig 更新流量配置(管理员)
 func (h *AgentHandler) UpdateTrafficConfig(c echo.Context) error {
 	agentID := c.Param("id")

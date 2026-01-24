@@ -3,7 +3,7 @@ import {Link, useNavigate, useSearchParams} from 'react-router-dom';
 import type {MenuProps} from 'antd';
 import {App, Button, Divider, Dropdown, Form, Input, Select, Space, Table, Tag} from 'antd';
 import type {ColumnsType, TablePaginationConfig} from 'antd/es/table';
-import {Edit, Eye, FileWarning, Lock, MoreVertical, Plus, RefreshCw, Shield, Tags, Trash2} from 'lucide-react';
+import {Edit, Eye, EyeOff, FileWarning, Lock, MoreVertical, Plus, RefreshCw, Shield, Tags, Trash2} from 'lucide-react';
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import {deleteAgent, getAgentPaging, getTags} from '@/api/agent.ts';
@@ -14,6 +14,7 @@ import AgentEditModal from './AgentEditModal';
 import BatchTagsModal from './BatchTagsModal';
 import BatchTamperProtectionModal from './BatchTamperProtectionModal';
 import BatchSSHLoginConfigModal from './BatchSSHLoginConfigModal';
+import BatchVisibilityModal from './BatchVisibilityModal';
 
 interface AgentFilters {
     keyword?: string;
@@ -32,6 +33,7 @@ const AgentList = () => {
     const [batchTagModalVisible, setBatchTagModalVisible] = useState(false);
     const [batchTamperModalVisible, setBatchTamperModalVisible] = useState(false);
     const [batchSSHModalVisible, setBatchSSHModalVisible] = useState(false);
+    const [batchVisibilityModalVisible, setBatchVisibilityModalVisible] = useState(false);
     const [editingAgentId, setEditingAgentId] = useState<string | undefined>(undefined);
 
     const pageIndex = Number(searchParams.get('pageIndex')) || 1;
@@ -180,6 +182,14 @@ const AgentList = () => {
             return;
         }
         setBatchSSHModalVisible(true);
+    };
+
+    const handleBatchVisibility = () => {
+        if (selectedRowKeys.length === 0) {
+            messageApi.warning('请先选择要操作的探针');
+            return;
+        }
+        setBatchVisibilityModalVisible(true);
     };
 
     const columns: ColumnsType<Agent> = [
@@ -457,6 +467,13 @@ const AgentList = () => {
                         disabled: selectedRowKeys.length === 0,
                     },
                     {
+                        key: 'batch-visibility',
+                        label: `批量修改可见性${selectedRowKeys.length > 0 ? ` (${selectedRowKeys.length})` : ''}`,
+                        icon: <EyeOff size={16}/>,
+                        onClick: handleBatchVisibility,
+                        disabled: selectedRowKeys.length === 0,
+                    },
+                    {
                         key: 'batch-tamper',
                         label: `批量配置防篡改保护${selectedRowKeys.length > 0 ? ` (${selectedRowKeys.length})` : ''}`,
                         icon: <FileWarning size={16}/>,
@@ -580,6 +597,16 @@ const AgentList = () => {
                 onCancel={() => setBatchSSHModalVisible(false)}
                 onSuccess={() => {
                     setBatchSSHModalVisible(false);
+                    setSelectedRowKeys([]);
+                }}
+            />
+
+            <BatchVisibilityModal
+                open={batchVisibilityModalVisible}
+                agentIds={selectedRowKeys as string[]}
+                onCancel={() => setBatchVisibilityModalVisible(false)}
+                onSuccess={() => {
+                    setBatchVisibilityModalVisible(false);
                     setSelectedRowKeys([]);
                 }}
             />

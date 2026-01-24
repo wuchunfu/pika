@@ -517,6 +517,19 @@ export const batchUpdateTags = (data: BatchUpdateTagsRequest) => {
     return post<BatchUpdateTagsResponse>('/admin/agents/batch/tags', data);
 };
 
+// 批量更新探针可见性
+export interface BatchUpdateVisibilityResponse {
+    message: string;
+    count: number;
+}
+
+export const batchUpdateAgentVisibility = (agentIds: string[], visibility: string) => {
+    return post<BatchUpdateVisibilityResponse>('/admin/agents/batch/visibility', {
+        agentIds,
+        visibility,
+    });
+};
+
 // 流量统计相关接口
 
 // 更新流量配置（管理员接口）

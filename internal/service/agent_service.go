@@ -494,6 +494,41 @@ func (s *AgentService) BatchUpdateTags(ctx context.Context, agentIDs []string, t
 	})
 }
 
+// BatchUpdateVisibility 批量更新探针可见性
+func (s *AgentService) BatchUpdateVisibility(ctx context.Context, agentIDs []string, visibility string) error {
+	if len(agentIDs) == 0 {
+		return fmt.Errorf("探针ID列表不能为空")
+	}
+
+	// 验证可见性参数
+	if visibility != "public" && visibility != "private" {
+		return fmt.Errorf("可见性参数错误，必须是 public 或 private")
+	}
+
+	agents, err := s.AgentRepo.FindByIdIn(ctx, agentIDs)
+	if err != nil {
+		return err
+	}
+
+	// 在事务中执行批量更新
+	return s.Transaction(ctx, func(ctx context.Context) error {
+		for _, agent := range agents {
+			// 更新探针可见性
+			agent.Visibility = visibility
+			agent.UpdatedAt = time.Now().UnixMilli()
+			if err := s.AgentRepo.UpdateById(ctx, &agent); err != nil {
+				s.logger.Error("更新探针可见性失败", zap.String("agentId", agent.ID), zap.Error(err))
+				return err
+			}
+
+			s.logger.Info("探针可见性更新成功",
+				zap.String("agentId", agent.ID),
+				zap.String("visibility", visibility))
+		}
+		return nil
+	})
+}
+
 func (s *AgentService) InitStatus(ctx context.Context) error {
 	agents, err := s.AgentRepo.FindAll(ctx)
 	if err != nil {

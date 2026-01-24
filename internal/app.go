@@ -248,6 +248,7 @@ func setupApi(app *orz.App, components *AppComponents) {
 		adminApi.GET("/agents/:id/metrics/latest", components.AgentHandler.GetAdminLatestMetrics)
 		adminApi.PUT("/agents/:id", components.AgentHandler.UpdateInfo)
 		adminApi.POST("/agents/batch/tags", components.AgentHandler.BatchUpdateTags)
+		adminApi.POST("/agents/batch/visibility", components.AgentHandler.BatchUpdateVisibility)
 		adminApi.DELETE("/agents/:id", components.AgentHandler.Delete)
 		adminApi.POST("/agents/:id/command", components.AgentHandler.SendCommand)
 

@@ -82,8 +82,8 @@ const ServerList = () => {
     const {data: agents = [], isLoading} = useQuery<AgentWithMetrics[]>({
         queryKey: ['agents', 'online'],
         queryFn: async () => {
-            const agents = await listAgents();
-            return (agents || []) as AgentWithMetrics[];
+            const response = await listAgents();
+            return (response.data || []) as AgentWithMetrics[];
         },
         refetchInterval: 5000,
     });
@@ -101,7 +101,7 @@ const ServerList = () => {
     // 计算统计数据
     const stats = useMemo(() => {
         const total = agents.length;
-        const online = agents.filter(a => a.status === 1).length;
+        const online = agents?.filter(a => a.status === 1).length;
         const offline = total - online;
 
         // 计算网络统计
@@ -151,11 +151,11 @@ const ServerList = () => {
     // 过滤逻辑
     let displayAgents = agents;
     if (selectedTag === 'ONLINE') {
-        displayAgents = agents.filter(a => a.status === 1);
+        displayAgents = agents?.filter(a => a.status === 1);
     } else if (selectedTag === 'OFFLINE') {
-        displayAgents = agents.filter(a => a.status !== 1);
+        displayAgents = agents?.filter(a => a.status !== 1);
     } else if (selectedTag && selectedTag !== 'ALL') {
-        displayAgents = agents.filter(a => a.tags?.map(t => t.toUpperCase()).includes(selectedTag));
+        displayAgents = agents?.filter(a => a.tags?.map(t => t.toUpperCase()).includes(selectedTag));
     }
 
     // debug
@@ -205,9 +205,9 @@ const ServerList = () => {
                         const tagKey = tag === 'ALL' ? '' : tag;
                         let count = 0;
                         if (tag === 'ALL') count = agents.length;
-                        else if (tag === 'ONLINE') count = agents.filter(a => a.status === 1).length;
-                        else if (tag === 'OFFLINE') count = agents.filter(a => a.status !== 1).length;
-                        else count = agents.filter(a => a.tags?.map(t => t.toUpperCase()).includes(tag)).length;
+                        else if (tag === 'ONLINE') count = agents?.filter(a => a.status === 1).length;
+                        else if (tag === 'OFFLINE') count = agents?.filter(a => a.status !== 1).length;
+                        else count = agents?.filter(a => a.tags?.map(t => t.toUpperCase()).includes(tag)).length;
 
                         if (count === 0 && tag !== 'ALL') return null;
 

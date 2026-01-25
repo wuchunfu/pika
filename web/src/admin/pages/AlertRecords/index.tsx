@@ -8,8 +8,8 @@ import type {AlertRecord} from '@/types';
 import dayjs from 'dayjs';
 import {getErrorMessage} from '@/lib/utils';
 import {PageHeader} from '@admin/components';
-import {getAgentPaging} from '@/api/agent.ts';
 import {useQuery, useQueryClient} from '@tanstack/react-query';
+import {listAgentsByAdmin} from "@/api/agent.ts";
 
 const AlertRecordList = () => {
     const {message: messageApi, modal} = App.useApp();
@@ -24,7 +24,7 @@ const AlertRecordList = () => {
     const {data: agentsData} = useQuery({
         queryKey: ['agents-for-alert-filter'],
         queryFn: async () => {
-            const response = await getAgentPaging(1, 1000);
+            const response = await listAgentsByAdmin();
             return response.data;
         },
     });
@@ -90,7 +90,7 @@ const AlertRecordList = () => {
     };
 
     // 计算探针选项
-    const agentOptions = agentsData?.items?.map((agent) => ({
+    const agentOptions = agentsData?.map((agent) => ({
         label: agent.name || agent.id,
         value: agent.id,
     })) || [];

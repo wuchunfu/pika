@@ -3,7 +3,7 @@ import {App, Button, Card, Form, Input, InputNumber, Radio, Select, Space, Spin,
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
 import type {PublicIPConfig} from '@/api/property';
 import {getPublicIPConfig, savePublicIPConfig} from '@/api/property';
-import {getAgentPaging} from '@/api/agent.ts';
+import {listAgentsByAdmin} from '@/api/agent.ts';
 import {getErrorMessage} from '@/lib/utils';
 import type {Agent} from '@/types';
 
@@ -44,10 +44,10 @@ const PublicIPConfigComponent = ({defaultIPv4APIs, defaultIPv6APIs}: PublicIPCon
 
     const {data: agentsResponse} = useQuery({
         queryKey: ['admin', 'agents', 'public-ip'],
-        queryFn: () => getAgentPaging(1, 1000),
+        queryFn: () => listAgentsByAdmin(),
     });
 
-    const agentOptions = (agentsResponse?.data?.items || []).map((agent) => ({
+    const agentOptions = (agentsResponse?.data || []).map((agent) => ({
         label: formatAgentLabel(agent),
         value: agent.id,
     }));
@@ -128,7 +128,7 @@ const PublicIPConfigComponent = ({defaultIPv4APIs, defaultIPv6APIs}: PublicIPCon
     if (isLoading) {
         return (
             <div className="flex justify-center items-center py-20">
-                <Spin />
+                <Spin/>
             </div>
         );
     }
@@ -145,21 +145,21 @@ const PublicIPConfigComponent = ({defaultIPv4APIs, defaultIPv6APIs}: PublicIPCon
                     <Card title="采集设置" type="inner" className="mb-4">
                         <div className="flex flex-wrap items-center gap-6">
                             <Form.Item label="启用采集" name="enabled" valuePropName="checked">
-                                <Switch />
+                                <Switch/>
                             </Form.Item>
                             <Form.Item
                                 label="采集间隔(秒)"
                                 name="intervalSeconds"
                                 rules={[{type: 'number', min: 30, message: '采集间隔不能小于 30 秒'}]}
                             >
-                                <InputNumber min={30} max={86400} />
+                                <InputNumber min={30} max={86400}/>
                             </Form.Item>
                         </div>
                     </Card>
 
                     <Card title="IPv4 配置" type="inner" className="mb-4">
                         <Form.Item label="启用 IPv4" name="ipv4Enabled" valuePropName="checked">
-                            <Switch />
+                            <Switch/>
                         </Form.Item>
                         <Form.Item label="IPv4 采集范围" name="ipv4Scope">
                             <Radio.Group>
@@ -196,13 +196,13 @@ const PublicIPConfigComponent = ({defaultIPv4APIs, defaultIPv6APIs}: PublicIPCon
                             name="ipv4ApisText"
                             tooltip="每行一个 HTTP/HTTPS API 地址"
                         >
-                            <Input.TextArea rows={6} placeholder="每行一个 IPv4 API" />
+                            <Input.TextArea rows={6} placeholder="每行一个 IPv4 API"/>
                         </Form.Item>
                     </Card>
 
                     <Card title="IPv6 配置" type="inner" className="mb-4">
                         <Form.Item label="启用 IPv6" name="ipv6Enabled" valuePropName="checked">
-                            <Switch />
+                            <Switch/>
                         </Form.Item>
                         <Form.Item label="IPv6 采集范围" name="ipv6Scope">
                             <Radio.Group>
@@ -239,7 +239,7 @@ const PublicIPConfigComponent = ({defaultIPv4APIs, defaultIPv6APIs}: PublicIPCon
                             name="ipv6ApisText"
                             tooltip="每行一个 HTTP/HTTPS API 地址"
                         >
-                            <Input.TextArea rows={6} placeholder="每行一个 IPv6 API" />
+                            <Input.TextArea rows={6} placeholder="每行一个 IPv6 API"/>
                         </Form.Item>
                     </Card>
 

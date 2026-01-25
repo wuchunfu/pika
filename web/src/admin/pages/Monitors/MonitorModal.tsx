@@ -2,7 +2,7 @@ import {useEffect, useMemo} from 'react';
 import {App, Button, Form, Input, InputNumber, Modal, Select, Space, Switch} from 'antd';
 import {MinusCircle, PlusCircle} from 'lucide-react';
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
-import {getAgentPaging} from '@/api/agent.ts';
+import {listAgentsByAdmin} from '@/api/agent.ts';
 import {createMonitor, getMonitor, updateMonitor} from '@/api/monitor.ts';
 import type {Agent, MonitorTaskRequest} from '@/types';
 import {getErrorMessage} from '@/lib/utils';
@@ -31,8 +31,8 @@ const MonitorModal = ({open, monitorId, onCancel, onSuccess}: MonitorModalProps)
     } = useQuery({
         queryKey: ['agents', 'paging'],
         queryFn: async () => {
-            const response = await getAgentPaging(1, 1000);
-            return response.data.items || [];
+            const response = await listAgentsByAdmin();
+            return response.data || [];
         },
         enabled: open,
     });

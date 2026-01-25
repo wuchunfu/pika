@@ -3,7 +3,7 @@ import {App, Form, Input, Modal, Select, Switch} from 'antd';
 import {createDDNSConfig, getDDNSConfig, updateDDNSConfig} from '@/api/ddns.ts';
 import {getDNSProviders} from '@/api/dnsProvider.ts';
 import type {CreateDDNSConfigRequest, UpdateDDNSConfigRequest} from '@/types/ddns.ts';
-import {getAgentPaging} from '@/api/agent.ts';
+import {listAgentsByAdmin} from '@/api/agent.ts';
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
 
 interface DDNSModalProps {
@@ -41,8 +41,8 @@ const DDNSModal = ({open, id, onCancel, onSuccess}: DDNSModalProps) => {
     const {data: agentsData} = useQuery({
         queryKey: ['agents', 'paging'],
         queryFn: async () => {
-            const data = await getAgentPaging(1, 1000);
-            return data.data.items || [];
+            const data = await listAgentsByAdmin();
+            return data.data || [];
         },
         enabled: open && !isEditMode,
     });
@@ -218,7 +218,8 @@ const DDNSModal = ({open, id, onCancel, onSuccess}: DDNSModalProps) => {
                             </Form.Item>
                         </div>
 
-                        <Form.Item noStyle shouldUpdate={(prevValues, currentValues) => prevValues.enableIpv4 !== currentValues.enableIpv4}>
+                        <Form.Item noStyle
+                                   shouldUpdate={(prevValues, currentValues) => prevValues.enableIpv4 !== currentValues.enableIpv4}>
                             {() => {
                                 const enableIpv4 = form.getFieldValue('enableIpv4');
                                 if (!enableIpv4) {
@@ -279,7 +280,8 @@ const DDNSModal = ({open, id, onCancel, onSuccess}: DDNSModalProps) => {
                             </Form.Item>
                         </div>
 
-                        <Form.Item noStyle shouldUpdate={(prevValues, currentValues) => prevValues.enableIpv6 !== currentValues.enableIpv6}>
+                        <Form.Item noStyle
+                                   shouldUpdate={(prevValues, currentValues) => prevValues.enableIpv6 !== currentValues.enableIpv6}>
                             {() => {
                                 const enableIpv6 = form.getFieldValue('enableIpv6');
                                 if (!enableIpv6) {

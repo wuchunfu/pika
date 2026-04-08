@@ -21,15 +21,15 @@ build-web:
 
 # 构建服务端（开发）
 build-server:
-	$(GOFLAGS) GOOS=linux GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o bin/pika-linux-amd64 cmd/serv/main.go
-	upx bin/pika-linux-amd64
+	$(GOFLAGS) GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="$(LDFLAGS)" -o bin/pika-linux-amd64 cmd/serv/main.go
+	upx --best bin/pika-linux-amd64
 
 build-servers:
-	$(GOFLAGS) GOOS=linux GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o bin/pika-linux-amd64 cmd/serv/main.go
-	$(GOFLAGS) GOOS=linux GOARCH=arm64 go build -ldflags="$(LDFLAGS)" -o bin/pika-linux-arm64 cmd/serv/main.go
+	$(GOFLAGS) GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="$(LDFLAGS)" -o bin/pika-linux-amd64 cmd/serv/main.go
+	$(GOFLAGS) GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="$(LDFLAGS)" -o bin/pika-linux-arm64 cmd/serv/main.go
 
-	upx bin/pika-linux-amd64
-	upx bin/pika-linux-arm64
+	upx --best bin/pika-linux-amd64
+	upx --best bin/pika-linux-arm64
 
 # 构建所有平台的 Agent
 build-agents:
@@ -39,24 +39,24 @@ build-agents:
 	@mkdir -p bin/agents
 
 	# Linux
-	$(GOFLAGS) GOOS=linux GOARCH=amd64 go build -ldflags="$(AGENT_LDFLAGS)" -o bin/agents/pika-agent-linux-amd64 ./cmd/agent
-	$(GOFLAGS) GOOS=linux GOARCH=arm64 go build -ldflags="$(AGENT_LDFLAGS)" -o bin/agents/pika-agent-linux-arm64 ./cmd/agent
-	$(GOFLAGS) GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="$(AGENT_LDFLAGS)" -o bin/agents/pika-agent-linux-armv7 ./cmd/agent
-	$(GOFLAGS) GOOS=linux GOARCH=loong64 go build -ldflags="$(AGENT_LDFLAGS)" -o bin/agents/pika-agent-linux-loong64 ./cmd/agent
+	$(GOFLAGS) GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="$(AGENT_LDFLAGS)" -o bin/agents/pika-agent-linux-amd64 ./cmd/agent
+	$(GOFLAGS) GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="$(AGENT_LDFLAGS)" -o bin/agents/pika-agent-linux-arm64 ./cmd/agent
+	$(GOFLAGS) GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags="$(AGENT_LDFLAGS)" -o bin/agents/pika-agent-linux-armv7 ./cmd/agent
+	$(GOFLAGS) GOOS=linux GOARCH=loong64 go build -trimpath -ldflags="$(AGENT_LDFLAGS)" -o bin/agents/pika-agent-linux-loong64 ./cmd/agent
 
 	# macOS
-	$(GOFLAGS) GOOS=darwin GOARCH=amd64 go build -ldflags="$(AGENT_LDFLAGS)" -o bin/agents/pika-agent-darwin-amd64 ./cmd/agent
-	$(GOFLAGS) GOOS=darwin GOARCH=arm64 go build -ldflags="$(AGENT_LDFLAGS)" -o bin/agents/pika-agent-darwin-arm64 ./cmd/agent
+	$(GOFLAGS) GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags="$(AGENT_LDFLAGS)" -o bin/agents/pika-agent-darwin-amd64 ./cmd/agent
+	$(GOFLAGS) GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags="$(AGENT_LDFLAGS)" -o bin/agents/pika-agent-darwin-arm64 ./cmd/agent
 
 	# Windows
-	$(GOFLAGS) GOOS=windows GOARCH=amd64 go build -ldflags="$(AGENT_LDFLAGS)" -o bin/agents/pika-agent-windows-amd64.exe ./cmd/agent
-	$(GOFLAGS) GOOS=windows GOARCH=arm64 go build -ldflags="$(AGENT_LDFLAGS)" -o bin/agents/pika-agent-windows-arm64.exe ./cmd/agent
+	$(GOFLAGS) GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="$(AGENT_LDFLAGS)" -o bin/agents/pika-agent-windows-amd64.exe ./cmd/agent
+	$(GOFLAGS) GOOS=windows GOARCH=arm64 go build -trimpath -ldflags="$(AGENT_LDFLAGS)" -o bin/agents/pika-agent-windows-arm64.exe ./cmd/agent
 
 	@echo "All agents built successfully!"
 	@echo "Compressing agents with UPX..."
-	@upx bin/agents/pika-agent-linux-amd64
-	@upx bin/agents/pika-agent-linux-arm64
-	@upx bin/agents/pika-agent-linux-armv7
+	@upx --best bin/agents/pika-agent-linux-amd64
+	@upx --best bin/agents/pika-agent-linux-arm64
+	@upx --best bin/agents/pika-agent-linux-armv7
 	@echo "All agents compressed successfully!"
 	@ls -lh bin/agents/
 

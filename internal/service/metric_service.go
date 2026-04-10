@@ -803,7 +803,7 @@ func (s *MetricService) GetMonitorHistory(ctx context.Context, monitorID string,
 }
 
 // GetMonitorAgentStats 获取监控任务各探针的统计数据（只从缓存读取）
-func (s *MetricService) GetMonitorAgentStats(monitorID string) []protocol.MonitorData {
+func (s *MetricService) GetMonitorAgentStats(ctx context.Context, monitorID string) []protocol.MonitorData {
 	// 从缓存读取监控数据
 	latestMetrics, ok := s.monitorLatestCache.Get(monitorID)
 	if !ok {
@@ -812,7 +812,6 @@ func (s *MetricService) GetMonitorAgentStats(monitorID string) []protocol.Monito
 	}
 
 	// 查询监控任务配置
-	ctx := context.Background()
 	monitorTask, err := s.monitorRepo.FindById(ctx, monitorID)
 	if err != nil {
 		s.logger.Error("查询监控任务失败", zap.String("monitorID", monitorID), zap.Error(err))
@@ -872,7 +871,7 @@ func (s *MetricService) GetMonitorAgentStats(monitorID string) []protocol.Monito
 }
 
 // GetMonitorStats 获取监控任务的聚合统计数据（只从缓存读取）
-func (s *MetricService) GetMonitorStats(monitorID string) *metric.MonitorStatsResult {
+func (s *MetricService) GetMonitorStats(ctx context.Context, monitorID string) *metric.MonitorStatsResult {
 	// 从缓存读取监控数据
 	latestMetrics, ok := s.monitorLatestCache.Get(monitorID)
 	if !ok {
@@ -883,7 +882,6 @@ func (s *MetricService) GetMonitorStats(monitorID string) *metric.MonitorStatsRe
 	}
 
 	// 查询监控任务配置
-	ctx := context.Background()
 	monitorTask, err := s.monitorRepo.FindById(ctx, monitorID)
 	if err != nil {
 		s.logger.Error("查询监控任务失败", zap.String("monitorID", monitorID), zap.Error(err))

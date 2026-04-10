@@ -238,15 +238,6 @@ func (h *AgentHandler) Delete(c echo.Context) error {
 		return err
 	}
 
-	// 删除探针及其所有相关数据
-	if err := h.agentService.DeleteAgent(ctx, agentID); err != nil {
-		h.logger.Error("删除探针失败",
-			zap.String("agentID", agentID),
-			zap.String("name", agent.Name),
-			zap.Error(err))
-		return err
-	}
-
 	h.logger.Info("探针已删除",
 		zap.String("agentID", agentID),
 		zap.String("name", agent.Name))

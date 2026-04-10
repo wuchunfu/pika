@@ -533,92 +533,90 @@ const AgentList = () => {
                         icon: <RefreshCw size={16}/>,
                         onClick: () => refetch(),
                     },
+                    {
+                        key: 'cleanup-metrics',
+                        label: cleanupMutation.isPending ? '清理中...' : '清理残留指标数据',
+                        icon: <Wrench size={16}/>,
+                        onClick: handleCleanupMetrics,
+                        loading: cleanupMutation.isPending,
+                    },
                 ]}
             />
 
-            <Button
-                key="cleanup-metrics"
-                icon={<Wrench size={16}/>}
-                onClick={handleCleanupMetrics}
-                loading={cleanupMutation.isPending}
-                type="default"
-                danger={false}
-            >
-                {cleanupMutation.isPending ? '清理中...' : '清理残留指标数据'}
-            </Button>
+            <div className="bg-white dark:bg-[#1c1c21] rounded-2xl border border-gray-100 dark:border-white/5 shadow-sm p-4 sm:p-6 space-y-6">
+                <div className="flex flex-col gap-4">
+                    <Form form={searchForm} layout="inline" onFinish={handleSearch} className="!flex-wrap gap-y-4">
+                        <Form.Item label="关键字" name="keyword">
+                            <Input placeholder="名称/主机名/通信地址/IPv4/IPv6" style={{width: 260}}/>
+                        </Form.Item>
+                        <Form.Item label="状态" name="status">
+                            <Select
+                                placeholder="请选择状态"
+                                allowClear
+                                style={{width: 140}}
+                                options={[
+                                    {label: '在线', value: 'online'},
+                                    {label: '离线', value: 'offline'},
+                                ]}
+                            />
+                        </Form.Item>
+                        <Form.Item>
+                            <Space>
+                                <Button type="primary" htmlType="submit">
+                                    查询
+                                </Button>
+                                <Button onClick={handleReset}>
+                                    重置
+                                </Button>
+                            </Space>
+                        </Form.Item>
+                    </Form>
 
-            <Divider/>
-
-            <Form form={searchForm} layout="inline" onFinish={handleSearch}>
-                <Form.Item label="关键字" name="keyword">
-                    <Input placeholder="名称/主机名/通信地址/IPv4/IPv6" style={{width: 225}}/>
-                </Form.Item>
-                <Form.Item label="状态" name="status">
-                    <Select
-                        placeholder="请选择状态"
-                        allowClear
-                        style={{width: 160}}
-                        options={[
-                            {label: '在线', value: 'online'},
-                            {label: '离线', value: 'offline'},
-                        ]}
-                    />
-                </Form.Item>
-                <Form.Item>
-                    <Space>
-                        <Button type="primary" htmlType="submit">
-                            查询
-                        </Button>
-                        <Button onClick={handleReset}>
-                            重置
-                        </Button>
-                    </Space>
-                </Form.Item>
-            </Form>
-
-            {tags.length > 0 && (
-                <div className="flex items-center gap-2 flex-wrap pt-4">
-                    <span className="">标签筛选：</span>
-                    <Tag.CheckableTag
-                        checked={selectedTags.length === 0}
-                        onChange={() => setSelectedTags([])}
-                    >
-                        全部
-                    </Tag.CheckableTag>
-                    {tags.map((tag) => (
-                        <Tag.CheckableTag
-                            key={tag}
-                            checked={selectedTags.includes(tag)}
-                            onChange={(checked) => {
-                                if (checked) {
-                                    setSelectedTags([...selectedTags, tag]);
-                                } else {
-                                    setSelectedTags(selectedTags.filter(t => t !== tag));
-                                }
-                            }}
-                        >
-                            {tag}
-                        </Tag.CheckableTag>
-                    ))}
+                    {tags.length > 0 && (
+                        <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-gray-50 dark:border-white/5 mt-2">
+                            <span className="text-sm text-gray-500 dark:text-gray-400">标签筛选：</span>
+                            <Tag.CheckableTag
+                                checked={selectedTags.length === 0}
+                                onChange={() => setSelectedTags([])}
+                                className="!rounded-full"
+                            >
+                                全部
+                            </Tag.CheckableTag>
+                            {tags.map((tag) => (
+                                <Tag.CheckableTag
+                                    key={tag}
+                                    checked={selectedTags.includes(tag)}
+                                    onChange={(checked) => {
+                                        if (checked) {
+                                            setSelectedTags([...selectedTags, tag]);
+                                        } else {
+                                            setSelectedTags(selectedTags.filter(t => t !== tag));
+                                        }
+                                    }}
+                                    className="!rounded-full"
+                                >
+                                    {tag}
+                                </Tag.CheckableTag>
+                            ))}
+                        </div>
+                    )}
                 </div>
-            )}
 
-            <Table<Agent>
-                columns={columns}
-                dataSource={filteredAgents}
-                loading={isLoading || isFetching}
-                rowKey="id"
-                scroll={{x: 'max-content'}}
-                rowSelection={{
-                    selectedRowKeys,
-                    onChange: (keys) => setSelectedRowKeys(keys),
-                    preserveSelectedRowKeys: true,
-                }}
-                pagination={false}
-                style={{
-                    marginTop: 16,
-                }}
-            />
+                <Table<Agent>
+                    columns={columns}
+                    dataSource={filteredAgents}
+                    loading={isLoading || isFetching}
+                    rowKey="id"
+                    scroll={{x: 'max-content'}}
+                    tableLayout="fixed"
+                    rowSelection={{
+                        selectedRowKeys,
+                        onChange: (keys) => setSelectedRowKeys(keys),
+                        preserveSelectedRowKeys: true,
+                    }}
+                    pagination={false}
+                />
+            </div>
 
             <AgentEditModal
                 open={editModalVisible}

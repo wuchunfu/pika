@@ -642,43 +642,99 @@ func viewLog(cmd *cobra.Command, args []string) {
 	// 1. 如果指定了 --service 或者服务正在运行，查看服务日志
 	// 2. 否则，查看日志文件
 	if logService || serviceRunning {
-		viewServiceLog()
+		viewServiceLog(cfg)
 	} else {
 		viewLogFile(cfg)
 	}
 }
 
 // viewServiceLog 查看系统服务日志
-func viewServiceLog() {
-	args := []string{}
-
+func viewServiceLog(cfg *config.Config) {
 	switch runtime.GOOS {
 	case "linux":
-		// 使用 journalctl
-		args = append(args, "journalctl")
-		args = append(args, "-u", "pika-agent")
-		args = append(args, "-n", fmt.Sprintf("%d", logLines))
-		if logFollow {
-			args = append(args, "-f")
-		}
+		viewLinuxServiceLog(cfg)
 	case "darwin":
-		// 使用 log show
-		args = append(args, "log", "show")
-		args = append(args, "--predicate", `subsystem == "org.pika.pika-agent"`)
-		args = append(args, "--last", fmt.Sprintf("%d", logLines))
-		if logFollow {
-			args = append(args, "--stream")
-		}
+		viewDarwinServiceLog()
 	case "windows":
-		// 使用 PowerShell Get-WinEvent
-		psCmd := fmt.Sprintf("Get-WinEvent -FilterHashtable @{LogName='Application';ProviderName='pika-agent'} -MaxEvents %d | Format-List TimeCreated, Message", logLines)
-		args = append(args, "powershell", "-NoProfile", "-Command", psCmd)
+		viewWindowsServiceLog()
 	default:
 		log.Printf("⚠️  当前系统 (%s) 不支持查看服务日志", runtime.GOOS)
+	}
+}
+
+// viewLinuxServiceLog Linux 系统服务日志查看（优先 journalctl，空时回退到日志文件）
+func viewLinuxServiceLog(cfg *config.Config) {
+	args := []string{"journalctl", "-u", "pika-agent", "-n", fmt.Sprintf("%d", logLines)}
+	if logFollow {
+		args = append(args, "-f")
+	}
+
+	// 非跟踪模式：先检查 journal 是否为空
+	if !logFollow {
+		out, err := exec.Command(args[0], args[1:]...).CombinedOutput()
+		output := strings.TrimSpace(string(out))
+		if err != nil || output == "" || strings.Contains(output, "-- No entries --") {
+			// journal 为空，回退到日志文件
+			viewLogFile(cfg)
+			return
+		}
+		fmt.Printf("📋 系统服务日志 (最近 %d 行)：\n", logLines)
+		fmt.Println(strings.Repeat("─", 50))
+		fmt.Println(output)
 		return
 	}
 
+	// 跟踪模式：先快速检查 journal 是否有内容，再决定是否回退
+	checkOut, _ := exec.Command("journalctl", "-u", "pika-agent", "-n", "1").CombinedOutput()
+	checkOutput := strings.TrimSpace(string(checkOut))
+	if checkOutput == "" || strings.Contains(checkOutput, "-- No entries --") {
+		// journal 为空，回退到日志文件
+		viewLogFile(cfg)
+		return
+	}
+
+	fmt.Printf("📋 正在跟踪系统服务日志 (最近 %d 行)...\n", logLines)
+	fmt.Println("按 Ctrl+C 退出")
+	fmt.Println()
+
 	cmd := exec.Command(args[0], args[1:]...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		log.Printf("⚠️  查看服务日志失败: %v", err)
+	}
+}
+
+// viewDarwinServiceLog macOS 系统服务日志查看
+func viewDarwinServiceLog() {
+	args := []string{"log", "show"}
+	args = append(args, "--predicate", `subsystem == "org.pika.pika-agent"`)
+	args = append(args, "--last", fmt.Sprintf("%d", logLines))
+	if logFollow {
+		args = append(args, "--stream")
+	}
+
+	if logFollow {
+		fmt.Printf("📋 正在跟踪系统服务日志 (最近 %d 行)...\n", logLines)
+		fmt.Println("按 Ctrl+C 退出")
+		fmt.Println()
+	} else {
+		fmt.Printf("📋 系统服务日志 (最近 %d 行)：\n", logLines)
+		fmt.Println(strings.Repeat("─", 50))
+	}
+
+	cmd := exec.Command(args[0], args[1:]...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		log.Printf("⚠️  查看服务日志失败: %v", err)
+	}
+}
+
+// viewWindowsServiceLog Windows 系统服务日志查看
+func viewWindowsServiceLog() {
+	psCmd := fmt.Sprintf("Get-WinEvent -FilterHashtable @{LogName='Application';ProviderName='pika-agent'} -MaxEvents %d | Format-List TimeCreated, Message", logLines)
+	cmd := exec.Command("powershell", "-NoProfile", "-Command", psCmd)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 

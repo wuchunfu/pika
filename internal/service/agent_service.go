@@ -43,7 +43,7 @@ func NewAgentService(logger *zap.Logger, db *gorm.DB, apiKeyService *ApiKeyServi
 // RegisterAgent 注册探针
 func (s *AgentService) RegisterAgent(ctx context.Context, ip string, info *protocol.AgentInfo, apiKey string) (*models.Agent, error) {
 	// 验证API密钥
-	if _, err := s.apiKeyService.ValidateApiKey(ctx, apiKey); err != nil {
+	if _, err := s.apiKeyService.ValidateApiKey(ctx, apiKey, "agent"); err != nil {
 		s.logger.Warn("agent registration failed: invalid api key",
 			zap.String("agentID", info.ID),
 			zap.String("hostname", info.Hostname),

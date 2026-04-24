@@ -25,7 +25,7 @@ func (h *AgentHandler) DownloadAgent(c echo.Context) error {
 
 	// 校验 API Key
 	apiKey := c.QueryParam("key")
-	if _, err := h.apiKeyService.ValidateApiKey(c.Request().Context(), apiKey); err != nil {
+	if _, err := h.apiKeyService.ValidateApiKey(c.Request().Context(), apiKey, "agent"); err != nil {
 		// API Key 校验失败，尝试 IP 白名单兜底（兼容旧版 Agent 自动更新）
 		clientIP := c.RealIP()
 		isOnline, checkErr := h.agentService.IsAgentByIP(c.Request().Context(), clientIP)

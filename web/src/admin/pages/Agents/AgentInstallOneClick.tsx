@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, App, Button, Card, Input, Select, Space, Spin, Typography } from 'antd';
-import { CopyIcon } from 'lucide-react';
+import { CopyIcon, Plus } from 'lucide-react';
 import copy from 'copy-to-clipboard';
 import { Link } from 'react-router-dom';
+import type { ApiKey } from '@/types';
 import {
     AgentInstallLayout,
     ConfigHelper,
@@ -11,6 +12,7 @@ import {
 } from './AgentInstallShared';
 import { useAgentInstallConfig } from './useAgentInstallConfig';
 import { getAgentInstallConfig, saveAgentInstallConfig } from '@/api/property';
+import ApiKeyModal from '../ApiKeys/ApiKeyModal';
 
 const { Paragraph } = Typography;
 
@@ -26,12 +28,15 @@ const AgentInstallOneClick = () => {
         loading,
         backendServerUrl,
         apiKeyOptions,
+        refetchApiKeys,
     } = useAgentInstallConfig();
 
     const [serverUrl, setServerUrl] = useState<string>('');
     const [serverUrlError, setServerUrlError] = useState<string>('');
     const [serverUrlLoading, setServerUrlLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
+    const [newApiKeyData, setNewApiKeyData] = useState<ApiKey | null>(null);
     const effectiveServerUrl = serverUrl.trim() || backendServerUrl;
 
     // 加载服务端地址配置
@@ -77,6 +82,15 @@ const AgentInstallOneClick = () => {
         setServerUrl(currentUrl);
         setServerUrlError('');
         void saveServerUrl(currentUrl);
+    };
+
+    const handleCreateApiKeySuccess = (apiKey?: ApiKey) => {
+        setIsCreateModalVisible(false);
+        if (apiKey) {
+            setNewApiKeyData(apiKey);
+            void refetchApiKeys();
+            setSelectedApiKeyId(apiKey.id);
+        }
     };
 
     const installCommand = useMemo(() => {
@@ -129,13 +143,23 @@ const AgentInstallOneClick = () => {
                         </div>
 
                         <div>
-                            <div className="mb-1 text-gray-600 dark:text-slate-400">选择通信密钥</div>
+                            <div className="mb-1 flex items-center justify-between">
+                                <span className="text-gray-600 dark:text-slate-400">选择通信密钥</span>
+                                <Button
+                                    size="small"
+                                    type="primary"
+                                    icon={<Plus size={14}/>}
+                                    onClick={() => setIsCreateModalVisible(true)}
+                                >
+                                    创建密钥
+                                </Button>
+                            </div>
                             {apiKeys.length === 0 ? (
                                 <Alert
                                     message="暂无可用的通信密钥"
                                     description={
                                         <span>
-                                            请先前往 <Link to="/admin/api-keys">通信密钥管理</Link> 页面生成一个通信密钥
+                                            请点击上方"创建密钥"按钮生成一个通信密钥，或前往 <Link to="/admin/api-keys">通信密钥管理</Link> 页面
                                         </span>
                                     }
                                     type="warning"
@@ -153,6 +177,34 @@ const AgentInstallOneClick = () => {
                                 />
                             )}
                         </div>
+
+                        {newApiKeyData && (
+                            <Alert
+                                message="新创建的通信密钥"
+                                description={
+                                    <div className="space-y-2">
+                                        <div>
+                                            <span className="text-gray-600">密钥名称：</span>
+                                            <span className="font-medium">{newApiKeyData.name}</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-gray-600">完整密钥：</span>
+                                            <code className="text-xs bg-gray-100 px-2 py-1 rounded font-mono break-all">
+                                                {newApiKeyData.key}
+                                            </code>
+                                        </div>
+                                        <div className="text-xs text-yellow-600">
+                                            请妥善保管此密钥，关闭后将无法再次查看完整密钥
+                                        </div>
+                                    </div>
+                                }
+                                type="success"
+                                showIcon
+                                className="mt-2"
+                                onClose={() => setNewApiKeyData(null)}
+                                closable
+                            />
+                        )}
 
                         <div>
                             <div className="mb-1 text-gray-600 dark:text-slate-400">
@@ -205,6 +257,13 @@ const AgentInstallOneClick = () => {
                 <ServiceHelper os={AGENT_NAME} />
                 <ConfigHelper />
             </Space>
+
+            <ApiKeyModal
+                open={isCreateModalVisible}
+                apiKeyId={undefined}
+                onCancel={() => setIsCreateModalVisible(false)}
+                onSuccess={handleCreateApiKeySuccess}
+            />
         </AgentInstallLayout>
     );
 };

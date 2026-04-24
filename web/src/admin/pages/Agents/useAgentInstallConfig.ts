@@ -15,6 +15,7 @@ type UseAgentInstallConfigResult = {
     loading: boolean;
     backendServerUrl: string;
     apiKeyOptions: ApiKeyOption[];
+    refetchApiKeys: () => Promise<void>;
 };
 
 export const useAgentInstallConfig = (): UseAgentInstallConfigResult => {
@@ -27,21 +28,23 @@ export const useAgentInstallConfig = (): UseAgentInstallConfigResult => {
     const { message } = App.useApp();
 
     // 加载通信密钥列表（key 已遮蔽）
+    const fetchApiKeys = async () => {
+        setLoading(true);
+        try {
+            const keys = await listApiKeys();
+            const enabledKeys = keys.data?.items.filter(k => k.enabled) || [];
+            setApiKeys(enabledKeys);
+            return enabledKeys;
+        } catch (error) {
+            console.error('Failed to load API keys:', error);
+            message.error('加载通信密钥失败');
+            return [];
+        } finally {
+            setLoading(false);
+        }
+    };
+
     useEffect(() => {
-        const fetchApiKeys = async () => {
-            setLoading(true);
-            try {
-                const keys = await listApiKeys();
-                const enabledKeys = keys.data?.items.filter(k => k.enabled) || [];
-                setApiKeys(enabledKeys);
-                setSelectedApiKeyId((prev) => prev || enabledKeys[0]?.id || '');
-            } catch (error) {
-                console.error('Failed to load API keys:', error);
-                message.error('加载通信密钥失败');
-            } finally {
-                setLoading(false);
-            }
-        };
         void fetchApiKeys();
     }, [message]);
 
@@ -86,6 +89,13 @@ export const useAgentInstallConfig = (): UseAgentInstallConfigResult => {
         [apiKeys]
     );
 
+    const refetchApiKeys = async () => {
+        const keys = await fetchApiKeys();
+        if (keys.length > 0 && !selectedApiKeyId) {
+            setSelectedApiKeyId(keys[0].id);
+        }
+    };
+
     return {
         apiKeys,
         selectedApiKeyId,
@@ -96,5 +106,6 @@ export const useAgentInstallConfig = (): UseAgentInstallConfigResult => {
         loading,
         backendServerUrl,
         apiKeyOptions,
+        refetchApiKeys,
     };
 };

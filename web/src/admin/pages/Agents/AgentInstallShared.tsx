@@ -1,7 +1,9 @@
-import React, { type ReactNode } from 'react';
+import React, { type ReactNode, useState } from 'react';
 import { Alert, Button, Card, Input, Select, Space, Typography } from 'antd';
 import { Link, useNavigate } from 'react-router-dom';
+import { Plus } from 'lucide-react';
 import type { ApiKey } from '@/types';
+import ApiKeyModal from '../ApiKeys/ApiKeyModal';
 
 const { Paragraph, Text } = Typography;
 
@@ -22,6 +24,7 @@ export type ApiChooserProps = {
     apiKeyOptions: ApiKeyOption[];
     loading: boolean;
     onSelectApiKey: (value: string) => void;
+    onApiKeyCreated?: (apiKey: ApiKey) => void;
 };
 
 export const AgentInstallLayout = ({ activeKey, children }: { activeKey: InstallNavKey; children: ReactNode }) => {
@@ -68,35 +71,109 @@ export const ApiChooser = ({
     apiKeyOptions,
     loading,
     onSelectApiKey,
-}: ApiChooserProps) => (
-    <Card type="inner" title="配置选项">
-        <div>
-            <div className="mb-1 text-gray-600 dark:text-slate-400">选择通信密钥</div>
-            {apiKeys.length === 0 ? (
-                <Alert
-                    message="暂无可用的通信密钥"
-                    description={
-                        <span>
-                            请先前往 <Link to="/admin/api-keys">通信密钥管理</Link> 页面生成一个通信密钥
-                        </span>
-                    }
-                    type="warning"
-                    showIcon
-                    className="mt-2"
-                />
-            ) : (
-                <Select
-                    className="w-full"
-                    value={selectedApiKey}
-                    onChange={onSelectApiKey}
-                    options={apiKeyOptions}
-                    loading={loading}
-                    placeholder="请选择通信密钥"
-                />
+    onApiKeyCreated,
+}: ApiChooserProps) => {
+    const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
+    const [newApiKeyData, setNewApiKeyData] = useState<ApiKey | null>(null);
+    const [showApiKeyModal, setShowApiKeyModal] = useState(false);
+    const navigate = useNavigate();
+
+    const handleCreateSuccess = (apiKey?: ApiKey) => {
+        setIsCreateModalVisible(false);
+        if (apiKey) {
+            setNewApiKeyData(apiKey);
+            setShowApiKeyModal(true);
+            if (onApiKeyCreated) {
+                onApiKeyCreated(apiKey);
+            }
+        }
+    };
+
+    return (
+        <>
+            <Card type="inner" title="配置选项">
+                <div>
+                    <div className="mb-1 flex items-center justify-between">
+                        <span className="text-gray-600 dark:text-slate-400">选择通信密钥</span>
+                        <Button
+                            size="small"
+                            type="primary"
+                            icon={<Plus size={14}/>}
+                            onClick={() => setIsCreateModalVisible(true)}
+                        >
+                            创建密钥
+                        </Button>
+                    </div>
+                    {apiKeys.length === 0 ? (
+                        <Alert
+                            message="暂无可用的通信密钥"
+                            description={
+                                <span>
+                                    请点击上方"创建密钥"按钮生成一个通信密钥，或前往 <Link to="/admin/api-keys">通信密钥管理</Link> 页面
+                                </span>
+                            }
+                            type="warning"
+                            showIcon
+                            className="mt-2"
+                        />
+                    ) : (
+                        <Select
+                            className="w-full"
+                            value={selectedApiKey}
+                            onChange={onSelectApiKey}
+                            options={apiKeyOptions}
+                            loading={loading}
+                            placeholder="请选择通信密钥"
+                        />
+                    )}
+                </div>
+            </Card>
+
+            <ApiKeyModal
+                open={isCreateModalVisible}
+                apiKeyId={undefined}
+                onCancel={() => setIsCreateModalVisible(false)}
+                onSuccess={handleCreateSuccess}
+            />
+
+            {newApiKeyData && (
+                <Card type="inner" title="新创建的通信密钥">
+                    <Alert
+                        message="请妥善保管此密钥，关闭后将无法再次查看完整密钥"
+                        type="warning"
+                        showIcon
+                        className="mb-3"
+                    />
+                    <div className="space-y-2">
+                        <div>
+                            <span className="text-gray-600 dark:text-slate-400">密钥名称：</span>
+                            <span className="font-medium">{newApiKeyData.name}</span>
+                        </div>
+                        <div>
+                            <span className="text-gray-600 dark:text-slate-400">完整密钥：</span>
+                            <code className="text-xs bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded font-mono break-all">
+                                {newApiKeyData.key}
+                            </code>
+                        </div>
+                    </div>
+                    <Button
+                        type="primary"
+                        className="mt-3"
+                        onClick={() => {
+                            setShowApiKeyModal(false);
+                            setNewApiKeyData(null);
+                            if (newApiKeyData.id && onSelectApiKey) {
+                                onSelectApiKey(newApiKeyData.id);
+                            }
+                        }}
+                    >
+                        使用此密钥
+                    </Button>
+                </Card>
             )}
-        </div>
-    </Card>
-);
+        </>
+    );
+};
 
 const getCommonCommands = (os: string) => {
     const agentCmd = os.startsWith('windows') ? `.\\${AGENT_NAME_EXE}` : AGENT_NAME;

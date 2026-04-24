@@ -44,6 +44,7 @@ const AgentInstallManual = () => {
         loading,
         backendServerUrl,
         apiKeyOptions,
+        refetchApiKeys,
     } = useAgentInstallConfig();
 
     const osConfigs: Record<OSType, OSConfig> = useMemo(() => ({
@@ -150,6 +151,10 @@ curl -L "${backendServerUrl}${config.downloadUrl}?key=${selectedApiKey}" -o ${AG
                     apiKeyOptions={apiKeyOptions}
                     loading={loading}
                     onSelectApiKey={setSelectedApiKeyId}
+                    onApiKeyCreated={(apiKey) => {
+                        void refetchApiKeys();
+                        setSelectedApiKeyId(apiKey.id);
+                    }}
                 />
                 <Tabs
                     activeKey={selectedOS}

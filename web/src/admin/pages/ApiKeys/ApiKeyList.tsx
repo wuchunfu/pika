@@ -1,8 +1,8 @@
 import {useEffect, useState} from 'react';
-import {useSearchParams} from 'react-router-dom';
+import {useSearchParams, useNavigate} from 'react-router-dom';
 import {App, Button, Divider, Input, Popconfirm, Space, Table, Tag} from 'antd';
 import type {ColumnsType, TablePaginationConfig} from 'antd/es/table';
-import {Copy, Edit, Loader2, Plus, RefreshCw, Trash2} from 'lucide-react';
+import {Copy, Edit, Loader2, Plus, RefreshCw, Terminal, Trash2} from 'lucide-react';
 import {deleteApiKey, disableApiKey, enableApiKey, getApiKeyRaw, listApiKeys} from '@/api/apiKey.ts';
 import type {ApiKey} from '@/types';
 import dayjs from 'dayjs';
@@ -16,6 +16,7 @@ import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
 const ApiKeyList = () => {
     const {message: messageApi} = App.useApp();
     const queryClient = useQueryClient();
+    const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const [searchValue, setSearchValue] = useState('');
     const [isModalVisible, setIsModalVisible] = useState(false);
@@ -243,6 +244,12 @@ const ApiKeyList = () => {
                 title="通信密钥管理"
                 description="管理探针连接所需的通信密钥，用于验证探针注册与数据上报"
                 actions={[
+                    {
+                        key: 'deploy',
+                        label: '部署指南',
+                        icon: <Terminal size={16}/>,
+                        onClick: () => navigate('/admin/agents-install/one-click'),
+                    },
                     {
                         key: 'create',
                         label: '生成密钥',

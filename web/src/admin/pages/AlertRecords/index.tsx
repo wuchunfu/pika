@@ -164,6 +164,7 @@ const AlertRecordList = () => {
         {
             title: '告警消息',
             dataIndex: 'message',
+            width: 320,
             ellipsis: true,
         },
         {
@@ -297,7 +298,7 @@ const AlertRecordList = () => {
                     loading={isLoading || isFetching}
                     rowKey="id"
                     size={'small'}
-                    scroll={{x: 'max-content'}}
+                    scroll={{x: 1700}}
                     tableLayout="fixed"
                     pagination={{
                         current: pageIndex,

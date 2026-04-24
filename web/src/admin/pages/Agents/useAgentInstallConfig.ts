@@ -26,7 +26,7 @@ export const useAgentInstallConfig = (): UseAgentInstallConfigResult => {
     const [rawKey, setRawKey] = useState<string>('');
     const { message } = App.useApp();
 
-    // 加载 API 密钥列表（key 已遮蔽）
+    // 加载通信密钥列表（key 已遮蔽）
     useEffect(() => {
         const fetchApiKeys = async () => {
             setLoading(true);
@@ -37,7 +37,7 @@ export const useAgentInstallConfig = (): UseAgentInstallConfigResult => {
                 setSelectedApiKeyId((prev) => prev || enabledKeys[0]?.id || '');
             } catch (error) {
                 console.error('Failed to load API keys:', error);
-                message.error('加载 API Token 失败');
+                message.error('加载通信密钥失败');
             } finally {
                 setLoading(false);
             }

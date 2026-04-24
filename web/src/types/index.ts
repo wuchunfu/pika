@@ -431,7 +431,7 @@ export interface LatestMetrics {
     temperature?: TemperatureMetric[];  // 温度传感器列表
 }
 
-// API Key 相关（探针通信密钥）
+// 通信密钥 / 管理 API Key 相关
 export interface ApiKey {
     id: string;
     name: string;

@@ -106,6 +106,7 @@ const MonitorList = () => {
         {
             title: '名称',
             dataIndex: 'name',
+            width: 220,
             render: (_, record) => (
                 <div className="flex flex-col">
                     <span className="font-medium text-gray-900 dark:text-white">{record.name}</span>
@@ -134,11 +135,13 @@ const MonitorList = () => {
         {
             title: '目标',
             dataIndex: 'target',
+            width: 320,
             ellipsis: true,
         },
         {
             title: '探针范围',
             dataIndex: 'agentIds',
+            width: 260,
             render: (_, record) => {
                 const hasAgents = record.agentIds && record.agentIds.length > 0;
                 const hasTags = record.tags && record.tags.length > 0;
@@ -270,7 +273,7 @@ const MonitorList = () => {
                     dataSource={dataSource}
                     loading={isLoading || isFetching}
                     rowKey="id"
-                    scroll={{x: 'max-content'}}
+                    scroll={{x: 1200}}
                     tableLayout="fixed"
                     pagination={{
                         current: pageIndex,

@@ -126,10 +126,10 @@ const AgentInstallOneClick = () => {
                         </div>
 
                         <div>
-                            <div className="mb-1 text-gray-600 dark:text-slate-400">选择 API Token</div>
+                            <div className="mb-1 text-gray-600 dark:text-slate-400">选择通信密钥</div>
                             {apiKeys.length === 0 ? (
                                 <Alert
-                                    message="暂无可用的 API Token"
+                                    message="暂无可用的通信密钥"
                                     description={
                                         <span>
                                             请先前往 <a href="/admin/api-keys">通信密钥管理</a> 页面生成一个通信密钥
@@ -146,7 +146,7 @@ const AgentInstallOneClick = () => {
                                     onChange={setSelectedApiKeyId}
                                     options={apiKeyOptions}
                                     loading={loading}
-                                    placeholder="请选择 API Token"
+                                    placeholder="请选择通信密钥"
                                 />
                             )}
                         </div>

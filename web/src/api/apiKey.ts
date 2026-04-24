@@ -6,12 +6,12 @@ export interface ListApiKeysResponse {
     total: number;
 }
 
-// 生成 API Key
+// 生成通信密钥
 export const generateApiKey = (data: GenerateApiKeyRequest) => {
     return post<ApiKey>('/admin/api-keys', data);
 };
 
-// 获取 API Key 列表
+// 获取通信密钥列表
 export const listApiKeys = (pageIndex: number = 1, pageSize: number = 10, name?: string) => {
     const params = new URLSearchParams();
     params.append('pageIndex', pageIndex.toString());
@@ -23,32 +23,32 @@ export const listApiKeys = (pageIndex: number = 1, pageSize: number = 10, name?:
     return get<ListApiKeysResponse>(`/admin/api-keys?${params.toString()}`);
 };
 
-// 获取 API Key 详情
+// 获取通信密钥详情
 export const getApiKey = (id: string) => {
     return get<ApiKey>(`/admin/api-keys/${id}`);
 };
 
-// 更新 API Key 名称
+// 更新通信密钥名称
 export const updateApiKeyName = (id: string, data: UpdateApiKeyNameRequest) => {
     return put(`/admin/api-keys/${id}`, data);
 };
 
-// 启用 API Key
+// 启用通信密钥
 export const enableApiKey = (id: string) => {
     return post(`/admin/api-keys/${id}/enable`, {});
 };
 
-// 禁用 API Key
+// 禁用通信密钥
 export const disableApiKey = (id: string) => {
     return post(`/admin/api-keys/${id}/disable`, {});
 };
 
-// 删除 API Key
+// 删除通信密钥
 export const deleteApiKey = (id: string) => {
     return del(`/admin/api-keys/${id}`);
 };
 
-// 获取 API Key 完整值
+// 获取通信密钥完整值
 export const getApiKeyRaw = (id: string) => {
     return get<{ key: string }>(`/admin/api-keys/${id}/raw`);
 };

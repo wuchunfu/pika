@@ -182,6 +182,7 @@ const AgentList = () => {
             dataIndex: 'name',
             key: 'name',
             fixed: 'left',
+            width: 220,
             render: (_, record) => (
                 <div className="space-y-1">
                     <div className="font-medium">
@@ -559,7 +560,7 @@ const AgentList = () => {
                     dataSource={filteredAgents}
                     loading={isLoading || isFetching}
                     rowKey="id"
-                    scroll={{x: 'max-content'}}
+                    scroll={{x: 1600}}
                     tableLayout="fixed"
                     rowSelection={{
                         selectedRowKeys,

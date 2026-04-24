@@ -134,6 +134,7 @@ const DDNSPage = () => {
         {
             title: '配置名称',
             dataIndex: 'name',
+            width: 220,
             render: (_, record) => (
                 <div className="flex items-center gap-2">
                     <Globe className="h-4 w-4 text-blue-500"/>
@@ -306,7 +307,7 @@ const DDNSPage = () => {
                     dataSource={ddnsPaging?.items || []}
                     loading={isLoading || isFetching}
                     rowKey="id"
-                    scroll={{x: 'max-content'}}
+                    scroll={{x: 1150}}
                     tableLayout="fixed"
                     pagination={{
                         current: pageIndex,

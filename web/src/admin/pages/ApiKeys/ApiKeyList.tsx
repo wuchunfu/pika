@@ -3,7 +3,7 @@ import {useSearchParams} from 'react-router-dom';
 import {App, Button, Divider, Input, Popconfirm, Space, Table, Tag} from 'antd';
 import type {ColumnsType, TablePaginationConfig} from 'antd/es/table';
 import {Copy, Edit, Plus, RefreshCw, Trash2} from 'lucide-react';
-import {deleteApiKey, disableApiKey, enableApiKey, listApiKeys} from '@/api/apiKey.ts';
+import {deleteApiKey, disableApiKey, enableApiKey, getApiKeyRaw, listApiKeys} from '@/api/apiKey.ts';
 import type {ApiKey} from '@/types';
 import dayjs from 'dayjs';
 import {getErrorMessage} from '@/lib/utils';
@@ -123,9 +123,14 @@ const ApiKeyList = () => {
         queryClient.invalidateQueries({queryKey: ['admin', 'api-keys']});
     };
 
-    const handleCopyApiKey = (key: string) => {
-        copy(key);
-        messageApi.success('复制成功');
+    const handleCopyApiKey = async (id: string) => {
+        try {
+            const response = await getApiKeyRaw(id);
+            copy(response.data.key || '');
+            messageApi.success('复制成功');
+        } catch (error: unknown) {
+            messageApi.error(getErrorMessage(error, '复制密钥失败'));
+        }
     };
 
     const columns: ColumnsType<ApiKey> = [
@@ -133,12 +138,14 @@ const ApiKeyList = () => {
             title: '名称',
             dataIndex: 'name',
             key: 'name',
+            width: 220,
             render: (text) => <span className="font-medium text-gray-900 dark:text-white">{text}</span>,
         },
         {
             title: '通信密钥',
             dataIndex: 'key',
             key: 'key',
+            width: 260,
             render: (_, record) => {
                 return (
                     <div className="flex items-center gap-2">
@@ -150,8 +157,8 @@ const ApiKeyList = () => {
                             type="text"
                             size="small"
                             icon={<Copy size={14}/>}
-                            onClick={() => handleCopyApiKey(record.key || '')}
-                            title="复制密钥"
+                            onClick={() => void handleCopyApiKey(record.id)}
+                            title="复制完整密钥"
                         />
                     </div>
                 );
@@ -269,7 +276,7 @@ const ApiKeyList = () => {
                     dataSource={apiKeyPaging?.items || []}
                     loading={isLoading || isFetching}
                     rowKey="id"
-                    scroll={{x: 'max-content'}}
+                    scroll={{x: 900}}
                     tableLayout="fixed"
                     pagination={{
                         current: pageIndex,

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, App, Button, Card, Input, Select, Space, Spin, Typography } from 'antd';
 import { CopyIcon } from 'lucide-react';
 import copy from 'copy-to-clipboard';
+import { Link } from 'react-router-dom';
 import {
     AgentInstallLayout,
     ConfigHelper,
@@ -30,7 +31,8 @@ const AgentInstallOneClick = () => {
     const [serverUrl, setServerUrl] = useState<string>('');
     const [serverUrlError, setServerUrlError] = useState<string>('');
     const [serverUrlLoading, setServerUrlLoading] = useState(true);
-    const effectiveServerUrl = serverUrl || backendServerUrl;
+    const [saving, setSaving] = useState(false);
+    const effectiveServerUrl = serverUrl.trim() || backendServerUrl;
 
     // 加载服务端地址配置
     useEffect(() => {
@@ -50,23 +52,23 @@ const AgentInstallOneClick = () => {
         void fetchConfig();
     }, []);
 
-    // 保存服务端地址配置
-    const handleServerUrlBlur = async (value: string) => {
+    // 保存服务端地址配置（防抖）
+    const saveServerUrl = async (value: string) => {
         const trimmed = value.trim();
-        setServerUrl(trimmed);
         if (!trimmed) {
             setServerUrlError('请先配置服务端地址');
-            message.error('请先配置服务端地址');
             return;
         }
         setServerUrlError('');
-
+        setSaving(true);
         try {
             await saveAgentInstallConfig({ serverUrl: trimmed });
             message.success('服务端地址已保存');
         } catch (error) {
             console.error('保存服务端地址失败:', error);
             message.error('保存服务端地址失败');
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -74,7 +76,7 @@ const AgentInstallOneClick = () => {
         const currentUrl = window.location.origin;
         setServerUrl(currentUrl);
         setServerUrlError('');
-        void handleServerUrlBlur(currentUrl);
+        void saveServerUrl(currentUrl);
     };
 
     const installCommand = useMemo(() => {
@@ -102,18 +104,19 @@ const AgentInstallOneClick = () => {
                             </div>
                             <Spin spinning={serverUrlLoading}>
                                 <Input
-                                    key={serverUrl}
                                     placeholder="例如: https://monitor.example.com"
-                                    defaultValue={serverUrl}
-                                    onBlur={(e) => {
-                                        void handleServerUrlBlur(e.currentTarget.value);
-                                    }}
+                                    value={serverUrl}
+                                    onChange={(e) => setServerUrl(e.target.value)}
+                                    onBlur={(e) => void saveServerUrl(e.target.value)}
                                     className="w-full"
                                 />
                             </Spin>
-                            <div className="mt-2">
+                            <div className="mt-2 flex gap-2">
                                 <Button size="small" onClick={handleFillCurrentUrl}>
                                     使用当前访问地址
+                                </Button>
+                                <Button size="small" loading={saving} onClick={() => void saveServerUrl(serverUrl)}>
+                                    保存
                                 </Button>
                             </div>
                             {serverUrlError ? (
@@ -132,7 +135,7 @@ const AgentInstallOneClick = () => {
                                     message="暂无可用的通信密钥"
                                     description={
                                         <span>
-                                            请先前往 <a href="/admin/api-keys">通信密钥管理</a> 页面生成一个通信密钥
+                                            请先前往 <Link to="/admin/api-keys">通信密钥管理</Link> 页面生成一个通信密钥
                                         </span>
                                     }
                                     type="warning"
@@ -156,14 +159,9 @@ const AgentInstallOneClick = () => {
                                 自定义名称 <span className="text-xs text-gray-400">(可选，留空则使用主机名)</span>
                             </div>
                             <Input
-                                key={customAgentName}
                                 placeholder="请输入自定义名称，例如: my-server-01"
-                                defaultValue={customAgentName}
-                                onBlur={(e) => {
-                                    const trimmed = e.currentTarget.value.trim();
-                                    setCustomAgentName(trimmed);
-                                    e.currentTarget.value = trimmed;
-                                }}
+                                value={customAgentName}
+                                onChange={(e) => setCustomAgentName(e.target.value)}
                                 className="w-full"
                                 allowClear
                             />

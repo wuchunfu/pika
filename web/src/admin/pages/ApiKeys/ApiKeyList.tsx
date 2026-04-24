@@ -2,7 +2,7 @@ import {useEffect, useState} from 'react';
 import {useSearchParams} from 'react-router-dom';
 import {App, Button, Divider, Input, Popconfirm, Space, Table, Tag} from 'antd';
 import type {ColumnsType, TablePaginationConfig} from 'antd/es/table';
-import {Copy, Edit, Plus, RefreshCw, Trash2} from 'lucide-react';
+import {Copy, Edit, Loader2, Plus, RefreshCw, Trash2} from 'lucide-react';
 import {deleteApiKey, disableApiKey, enableApiKey, getApiKeyRaw, listApiKeys} from '@/api/apiKey.ts';
 import type {ApiKey} from '@/types';
 import dayjs from 'dayjs';
@@ -22,6 +22,7 @@ const ApiKeyList = () => {
     const [editingApiKeyId, setEditingApiKeyId] = useState<string | undefined>(undefined);
     const [newApiKeyData, setNewApiKeyData] = useState<ApiKey | null>(null);
     const [showApiKeyModal, setShowApiKeyModal] = useState(false);
+    const [copyingKeyId, setCopyingKeyId] = useState<string | null>(null);
 
     const pageIndex = Number(searchParams.get('pageIndex')) || 1;
     const pageSize = Number(searchParams.get('pageSize')) || 10;
@@ -124,12 +125,15 @@ const ApiKeyList = () => {
     };
 
     const handleCopyApiKey = async (id: string) => {
+        setCopyingKeyId(id);
         try {
             const response = await getApiKeyRaw(id);
             copy(response.data.key || '');
             messageApi.success('复制成功');
         } catch (error: unknown) {
             messageApi.error(getErrorMessage(error, '复制密钥失败'));
+        } finally {
+            setCopyingKeyId(null);
         }
     };
 
@@ -147,6 +151,7 @@ const ApiKeyList = () => {
             key: 'key',
             width: 260,
             render: (_, record) => {
+                const isCopying = copyingKeyId === record.id;
                 return (
                     <div className="flex items-center gap-2">
                         <code
@@ -156,8 +161,9 @@ const ApiKeyList = () => {
                         <Button
                             type="text"
                             size="small"
-                            icon={<Copy size={14}/>}
+                            icon={isCopying ? <Loader2 size={14} className="animate-spin"/> : <Copy size={14}/>}
                             onClick={() => void handleCopyApiKey(record.id)}
+                            disabled={isCopying}
                             title="复制完整密钥"
                         />
                     </div>

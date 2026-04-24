@@ -1,6 +1,6 @@
 import React, { type ReactNode } from 'react';
 import { Alert, Button, Card, Input, Select, Space, Typography } from 'antd';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import type { ApiKey } from '@/types';
 
 const { Paragraph, Text } = Typography;
@@ -77,7 +77,7 @@ export const ApiChooser = ({
                     message="暂无可用的通信密钥"
                     description={
                         <span>
-                            请先前往 <a href="/admin/api-keys">通信密钥管理</a> 页面生成一个通信密钥
+                            请先前往 <Link to="/admin/api-keys">通信密钥管理</Link> 页面生成一个通信密钥
                         </span>
                     }
                     type="warning"

@@ -64,9 +64,15 @@ const AdminLayout = () => {
                 icon: <Globe className="h-4 w-4" strokeWidth={2}/>,
             },
             {
+                key: 'comm-keys',
+                label: '通信密钥',
+                path: '/admin/api-keys',
+                icon: <Key className="h-4 w-4" strokeWidth={2}/>,
+            },
+            {
                 key: 'api-keys',
                 label: 'API密钥',
-                path: '/admin/api-keys',
+                path: '/admin/manage-api-keys',
                 icon: <Key className="h-4 w-4" strokeWidth={2}/>,
             },
             {
@@ -90,6 +96,7 @@ const AdminLayout = () => {
         const userInfoStr = localStorage.getItem('userInfo');
 
         if (!token || !userInfoStr) {
+            navigate('/login');
             return;
         }
 

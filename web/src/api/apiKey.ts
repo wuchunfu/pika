@@ -16,6 +16,7 @@ export const listApiKeys = (pageIndex: number = 1, pageSize: number = 10, name?:
     const params = new URLSearchParams();
     params.append('pageIndex', pageIndex.toString());
     params.append('pageSize', pageSize.toString());
+    params.append('type', 'agent');
     if (name) {
         params.append('name', name);
     }
@@ -45,4 +46,9 @@ export const disableApiKey = (id: string) => {
 // 删除 API Key
 export const deleteApiKey = (id: string) => {
     return del(`/admin/api-keys/${id}`);
+};
+
+// 获取 API Key 完整值
+export const getApiKeyRaw = (id: string) => {
+    return get<{ key: string }>(`/admin/api-keys/${id}/raw`);
 };

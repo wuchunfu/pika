@@ -1,19 +1,19 @@
 import {useEffect, useState} from 'react';
 import {useSearchParams} from 'react-router-dom';
-import {App, Button, Divider, Input, Popconfirm, Space, Table, Tag} from 'antd';
+import {App, Button, Input, Popconfirm, Space, Table, Tag} from 'antd';
 import type {ColumnsType, TablePaginationConfig} from 'antd/es/table';
 import {Copy, Edit, Plus, RefreshCw, Trash2} from 'lucide-react';
-import {deleteApiKey, disableApiKey, enableApiKey, listApiKeys} from '@/api/apiKey.ts';
+import {deleteManageApiKey, disableManageApiKey, enableManageApiKey, listManageApiKeys} from '@/api/manageApiKey.ts';
 import type {ApiKey} from '@/types';
 import dayjs from 'dayjs';
 import {getErrorMessage} from '@/lib/utils';
 import {PageHeader} from '@admin/components';
 import copy from 'copy-to-clipboard';
-import ApiKeyModal from './ApiKeyModal';
-import ShowApiKeyModal from './ShowApiKeyModal';
+import ManageApiKeyModal from './ManageApiKeyModal';
+import ShowManageApiKeyModal from './ShowManageApiKeyModal';
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
 
-const ApiKeyList = () => {
+const ManageApiKeyList = () => {
     const {message: messageApi} = App.useApp();
     const queryClient = useQueryClient();
     const [searchParams, setSearchParams] = useSearchParams();
@@ -33,9 +33,9 @@ const ApiKeyList = () => {
         isFetching,
         refetch,
     } = useQuery({
-        queryKey: ['admin', 'api-keys', pageIndex, pageSize, name],
+        queryKey: ['admin', 'manage-api-keys', pageIndex, pageSize, name],
         queryFn: async () => {
-            const response = await listApiKeys(pageIndex, pageSize, name || undefined);
+            const response = await listManageApiKeys(pageIndex, pageSize, name || undefined);
             return response.data;
         },
     });
@@ -43,14 +43,14 @@ const ApiKeyList = () => {
     const toggleMutation = useMutation({
         mutationFn: async (apiKey: ApiKey) => {
             if (apiKey.enabled) {
-                await disableApiKey(apiKey.id);
+                await disableManageApiKey(apiKey.id);
             } else {
-                await enableApiKey(apiKey.id);
+                await enableManageApiKey(apiKey.id);
             }
         },
         onSuccess: (_, apiKey) => {
-            messageApi.success(apiKey.enabled ? '通信密钥已禁用' : '通信密钥已启用');
-            queryClient.invalidateQueries({queryKey: ['admin', 'api-keys']});
+            messageApi.success(apiKey.enabled ? 'API密钥已禁用' : 'API密钥已启用');
+            queryClient.invalidateQueries({queryKey: ['admin', 'manage-api-keys']});
         },
         onError: (error: unknown) => {
             messageApi.error(getErrorMessage(error, '操作失败'));
@@ -58,10 +58,10 @@ const ApiKeyList = () => {
     });
 
     const deleteMutation = useMutation({
-        mutationFn: (id: string) => deleteApiKey(id),
+        mutationFn: (id: string) => deleteManageApiKey(id),
         onSuccess: () => {
             messageApi.success('删除成功');
-            queryClient.invalidateQueries({queryKey: ['admin', 'api-keys']});
+            queryClient.invalidateQueries({queryKey: ['admin', 'manage-api-keys']});
         },
         onError: (error: unknown) => {
             messageApi.error(getErrorMessage(error, '删除失败'));
@@ -72,7 +72,6 @@ const ApiKeyList = () => {
         setSearchValue(name);
     }, [name]);
 
-    // 处理表格变化
     const handleTableChange = (newPagination: TablePaginationConfig) => {
         const nextParams = new URLSearchParams(searchParams);
         nextParams.set('pageIndex', String(newPagination.current || 1));
@@ -80,7 +79,6 @@ const ApiKeyList = () => {
         setSearchParams(nextParams);
     };
 
-    // 处理搜索
     const handleSearch = (value: string) => {
         const keyword = value.trim();
         setSearchValue(keyword);
@@ -116,11 +114,10 @@ const ApiKeyList = () => {
     const handleModalSuccess = (apiKey?: ApiKey) => {
         setIsModalVisible(false);
         if (apiKey) {
-            // 新建成功，显示生成的密钥
             setNewApiKeyData(apiKey);
             setShowApiKeyModal(true);
         }
-        queryClient.invalidateQueries({queryKey: ['admin', 'api-keys']});
+        queryClient.invalidateQueries({queryKey: ['admin', 'manage-api-keys']});
     };
 
     const handleCopyApiKey = (key: string) => {
@@ -136,7 +133,7 @@ const ApiKeyList = () => {
             render: (text) => <span className="font-medium text-gray-900 dark:text-white">{text}</span>,
         },
         {
-            title: '通信密钥',
+            title: 'API密钥',
             dataIndex: 'key',
             key: 'key',
             render: (_, record) => {
@@ -207,8 +204,8 @@ const ApiKeyList = () => {
                 </Button>,
                 <Popconfirm
                     key="delete"
-                    title="确定要删除这个通信密钥吗?"
-                    description="删除后无法恢复,且使用该密钥的探针将无法连接"
+                    title="确定要删除这个API密钥吗?"
+                    description="删除后使用该密钥的请求将被拒绝"
                     onConfirm={() => handleDelete(record.id)}
                     okText="确定"
                     cancelText="取消"
@@ -227,8 +224,8 @@ const ApiKeyList = () => {
     return (
         <div className="space-y-6">
             <PageHeader
-                title="通信密钥管理"
-                description="管理探针连接所需的通信密钥，用于验证探针注册与数据上报"
+                title="API密钥管理"
+                description="管理用于调用系统管理接口的API密钥，可作为JWT Token的替代认证方式"
                 actions={[
                     {
                         key: 'create',
@@ -281,14 +278,14 @@ const ApiKeyList = () => {
                 />
             </div>
 
-            <ApiKeyModal
+            <ManageApiKeyModal
                 open={isModalVisible}
                 apiKeyId={editingApiKeyId}
                 onCancel={() => setIsModalVisible(false)}
                 onSuccess={handleModalSuccess}
             />
 
-            <ShowApiKeyModal
+            <ShowManageApiKeyModal
                 open={showApiKeyModal}
                 apiKey={newApiKeyData}
                 onClose={() => {
@@ -300,4 +297,4 @@ const ApiKeyList = () => {
     );
 };
 
-export default ApiKeyList;
+export default ManageApiKeyList;

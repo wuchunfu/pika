@@ -77,7 +77,7 @@ export const ApiChooser = ({
                     message="暂无可用的 API Token"
                     description={
                         <span>
-                            请先前往 <a href="/admin/api-keys">API密钥管理</a> 页面生成一个 API Token
+                            请先前往 <a href="/admin/api-keys">通信密钥管理</a> 页面生成一个通信密钥
                         </span>
                     }
                     type="warning"

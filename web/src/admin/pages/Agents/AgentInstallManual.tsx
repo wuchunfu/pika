@@ -39,7 +39,8 @@ const AgentInstallManual = () => {
     const {
         apiKeys,
         selectedApiKey,
-        setSelectedApiKey,
+        selectedApiKeyId,
+        setSelectedApiKeyId,
         loading,
         backendServerUrl,
         apiKeyOptions,
@@ -145,10 +146,10 @@ curl -L "${backendServerUrl}${config.downloadUrl}?key=${selectedApiKey}" -o ${AG
             <Space direction="vertical" className="w-full">
                 <ApiChooser
                     apiKeys={apiKeys}
-                    selectedApiKey={selectedApiKey}
+                    selectedApiKey={selectedApiKeyId}
                     apiKeyOptions={apiKeyOptions}
                     loading={loading}
-                    onSelectApiKey={setSelectedApiKey}
+                    onSelectApiKey={setSelectedApiKeyId}
                 />
                 <Tabs
                     activeKey={selectedOS}

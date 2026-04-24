@@ -17,8 +17,9 @@ const AgentInstallOneClick = () => {
     const { message } = App.useApp();
     const {
         apiKeys,
+        selectedApiKeyId,
+        setSelectedApiKeyId,
         selectedApiKey,
-        setSelectedApiKey,
         customAgentName,
         setCustomAgentName,
         loading,
@@ -83,7 +84,7 @@ const AgentInstallOneClick = () => {
         const trimmedName = customAgentName.trim();
         const nameParam = trimmedName ? `&name=${encodeURIComponent(trimmedName)}` : '';
         return `curl -fsSL "${effectiveServerUrl}/api/agent/install.sh?token=${selectedApiKey}${nameParam}" | sudo bash`;
-    }, [backendServerUrl, selectedApiKey, customAgentName, serverUrl]);
+    }, [effectiveServerUrl, selectedApiKey, customAgentName]);
 
     const copyToClipboard = (text: string) => {
         copy(text);
@@ -131,7 +132,7 @@ const AgentInstallOneClick = () => {
                                     message="暂无可用的 API Token"
                                     description={
                                         <span>
-                                            请先前往 <a href="/admin/api-keys">API密钥管理</a> 页面生成一个 API Token
+                                            请先前往 <a href="/admin/api-keys">通信密钥管理</a> 页面生成一个通信密钥
                                         </span>
                                     }
                                     type="warning"
@@ -141,8 +142,8 @@ const AgentInstallOneClick = () => {
                             ) : (
                                 <Select
                                     className="w-full"
-                                    value={selectedApiKey}
-                                    onChange={setSelectedApiKey}
+                                    value={selectedApiKeyId}
+                                    onChange={setSelectedApiKeyId}
                                     options={apiKeyOptions}
                                     loading={loading}
                                     placeholder="请选择 API Token"

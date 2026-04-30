@@ -388,23 +388,21 @@ func (c *Config) ShouldExcludeNetworkInterface(interfaceName string) bool {
 }
 
 // GetDiskInclude 获取磁盘包含的挂载点列表（白名单）
-// 如果配置为空，返回默认的根分区匹配规则
-// Linux/macOS: ["/"]
-// Windows: ["C:"]
+// 返回 nil 表示未配置白名单，采集所有挂载点
 func (c *Config) GetDiskInclude() []string {
 	if len(c.Collector.DiskInclude) == 0 {
-		if runtime.GOOS == "windows" {
-			return []string{"C:"}
-		}
-		return []string{"/"}
+		return nil
 	}
 	return c.Collector.DiskInclude
 }
 
 // ShouldIncludeDiskMountPoint 检查挂载点是否应该被采集
-// 只有在 DiskInclude 白名单中的挂载点才会被采集
+// 未配置白名单时采集所有挂载点
 func (c *Config) ShouldIncludeDiskMountPoint(mountPoint string) bool {
 	includeMounts := c.GetDiskInclude()
+	if len(includeMounts) == 0 {
+		return true // 未配置白名单，采集所有
+	}
 	for _, mount := range includeMounts {
 		if mountPoint == mount {
 			return true

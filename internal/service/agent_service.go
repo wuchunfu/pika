@@ -12,6 +12,7 @@ import (
 	"github.com/dushixiang/pika/internal/protocol"
 	"github.com/dushixiang/pika/internal/repo"
 	"github.com/go-orz/orz"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
@@ -81,6 +82,24 @@ func (s *AgentService) RegisterAgent(ctx context.Context, ip string, info *proto
 			zap.String("ip", ip),
 			zap.String("version", info.Version))
 		return &existingAgent, nil
+	}
+
+	// 检查短 ID 前缀是否与已有探针冲突（防止短链接歧义）
+	var shortID string
+	if len(info.ID) >= 8 {
+		shortID = info.ID[:8]
+	} else {
+		shortID = info.ID
+	}
+	_, err = s.AgentRepo.FindByShortID(ctx, shortID)
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		// 前缀冲突，服务器分配新 UUID
+		s.logger.Warn("agent ID prefix collision detected, assigning new UUID",
+			zap.String("originalID", info.ID),
+			zap.String("conflictPrefix", shortID),
+			zap.String("hostname", info.Hostname),
+		)
+		info.ID = uuid.NewString()
 	}
 
 	// 创建新探针（使用客户端提供的持久化 ID）
@@ -419,15 +438,33 @@ func (s *AgentService) ListByAuth(ctx context.Context, isAuthenticated bool) ([]
 }
 
 // GetAgentByAuth 根据认证状态获取探针（已登录返回全部，未登录返回公开可见）
+// 支持完整UUID和短ID（前缀匹配）
 func (s *AgentService) GetAgentByAuth(ctx context.Context, id string, isAuthenticated bool) (*models.Agent, error) {
 	if isAuthenticated {
 		agent, err := s.AgentRepo.FindById(ctx, id)
+		if err == nil {
+			return &agent, nil
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, err
+		}
+		// 精确匹配失败，尝试短ID前缀匹配
+		agent, err = s.AgentRepo.FindByShortID(ctx, id)
 		if err != nil {
 			return nil, err
 		}
 		return &agent, nil
 	}
-	return s.AgentRepo.FindPublicAgentByID(ctx, id)
+
+	agent, err := s.AgentRepo.FindPublicAgentByID(ctx, id)
+	if err == nil {
+		return agent, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+	// 精确匹配失败，尝试短ID前缀匹配
+	return s.AgentRepo.FindPublicAgentByShortID(ctx, id)
 }
 
 // GetAllTags 获取所有探针的标签

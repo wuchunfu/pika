@@ -163,7 +163,7 @@ const ServerList = () => {
     }, [displayAgents]);
 
     const handleNavigate = (agentId: string) => {
-        navigate(`/servers/${agentId}`);
+        navigate(`/servers/${agentId.substring(0, 8)}`);
     };
 
     if (isLoading) {

@@ -93,13 +93,15 @@ func validateMetricType(metricType string) error {
 
 // GetMetrics 获取探针聚合指标（公开接口，已登录返回全部，未登录返回公开可见）
 func (h *AgentHandler) GetMetrics(c echo.Context) error {
-	agentID := c.Param("id")
+	shortID := c.Param("id")
 	ctx := c.Request().Context()
 
-	// 验证探针访问权限
-	if _, err := h.agentService.GetAgentByAuth(ctx, agentID, utils.IsAuthenticated(c)); err != nil {
+	// 验证探针访问权限并获取完整探针信息
+	agent, err := h.agentService.GetAgentByAuth(ctx, shortID, utils.IsAuthenticated(c))
+	if err != nil {
 		return err
 	}
+	agentID := agent.ID
 
 	metricType := c.QueryParam("type")
 	rangeParam := c.QueryParam("range")
@@ -130,14 +132,16 @@ func (h *AgentHandler) GetMetrics(c echo.Context) error {
 
 // GetLatestMetrics 获取探针最新指标（公开接口，已登录返回全部，未登录返回公开可见）
 func (h *AgentHandler) GetLatestMetrics(c echo.Context) error {
-	id := c.Param("id")
+	shortID := c.Param("id")
 	ctx := c.Request().Context()
 
-	// 验证探针访问权限
+	// 验证探针访问权限并获取完整探针信息
 	isAuthenticated := utils.IsAuthenticated(c)
-	if _, err := h.agentService.GetAgentByAuth(ctx, id, isAuthenticated); err != nil {
+	agent, err := h.agentService.GetAgentByAuth(ctx, shortID, isAuthenticated)
+	if err != nil {
 		return err
 	}
+	id := agent.ID
 
 	metrics, ok := h.metricService.GetLatestMetrics(id)
 	if !ok {
@@ -154,13 +158,15 @@ func (h *AgentHandler) GetLatestMetrics(c echo.Context) error {
 
 // GetAvailableNetworkInterfaces 获取探针的可用网卡列表（公开接口，已登录返回全部，未登录返回公开可见）
 func (h *AgentHandler) GetAvailableNetworkInterfaces(c echo.Context) error {
-	id := c.Param("id")
+	shortID := c.Param("id")
 	ctx := c.Request().Context()
 
-	// 验证探针访问权限
-	if _, err := h.agentService.GetAgentByAuth(ctx, id, utils.IsAuthenticated(c)); err != nil {
+	// 验证探针访问权限并获取完整探针信息
+	agent, err := h.agentService.GetAgentByAuth(ctx, shortID, utils.IsAuthenticated(c))
+	if err != nil {
 		return err
 	}
+	id := agent.ID
 
 	interfaces, err := h.metricService.GetAvailableNetworkInterfaces(ctx, id)
 	if err != nil {

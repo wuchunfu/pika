@@ -82,7 +82,7 @@ const Settings = () => {
                 title="系统设置"
                 description="CONFIGURATION"
             />
-            <Tabs tabPosition={'left'}
+            <Tabs tabPlacement={'start'}
                   items={items}
                   activeKey={searchParams.get('tab')}
                   onChange={(key) => {

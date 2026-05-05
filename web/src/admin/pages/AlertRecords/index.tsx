@@ -256,7 +256,7 @@ const AlertRecordList = () => {
     ];
 
     return (
-        <div>
+        <div className={'space-y-6'}>
             <PageHeader
                 title="告警记录"
                 description="查看和管理系统的告警记录"

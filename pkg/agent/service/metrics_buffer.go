@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/dushixiang/pika/internal/protocol"
-	"github.com/dushixiang/pika/pkg/agent/collector"
 	"github.com/dushixiang/pika/pkg/agent/utils"
 	bolt "go.etcd.io/bbolt"
 )
@@ -22,6 +21,11 @@ const (
 	outboundBufferTimeout   = 2 * time.Second
 	outboundBufferRetention = 24 * time.Hour
 )
+
+// WebSocketWriter 抽象 JSON 写入操作，由 outboundBuffer 和 outboundWriter 共用
+type WebSocketWriter interface {
+	WriteJSON(v interface{}) error
+}
 
 type outboundBuffer struct {
 	path string
@@ -101,7 +105,7 @@ func (b *outboundBuffer) Append(v interface{}) error {
 	return nil
 }
 
-func (b *outboundBuffer) Flush(writer collector.WebSocketWriter) (int, error) {
+func (b *outboundBuffer) Flush(writer WebSocketWriter) (int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 

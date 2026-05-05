@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -28,10 +29,10 @@ import (
 )
 
 const (
-	agentPingInterval       = 10 * time.Second
-	agentPongWait           = 30 * time.Second
-	agentWriteWait          = 5 * time.Second
-	agentCollectTimeout     = 30 * time.Second
+	agentPingInterval   = 10 * time.Second
+	agentPongWait       = 30 * time.Second
+	agentWriteWait      = 5 * time.Second
+	agentCollectTimeout = 30 * time.Second
 )
 
 // safeConn 线程安全的 WebSocket 连接包装器
@@ -162,8 +163,8 @@ func (a *Agent) runOnce(ctx context.Context, onRegistered func()) error {
 
 	// 创建自定义的 Dialer
 	dialer := &websocket.Dialer{
-		Proxy:            http.ProxyFromEnvironment,
-		HandshakeTimeout: 45 * time.Second,
+		Proxy:             http.ProxyFromEnvironment,
+		HandshakeTimeout:  45 * time.Second,
 		EnableCompression: true,
 	}
 	if a.cfg.Server.InsecureSkipVerify {
@@ -429,10 +430,14 @@ func (a *Agent) handleMonitorConfig(data json.RawMessage) {
 
 	slog.Info("收到服务监控配置，立即执行检测", "count", len(payload.Items))
 
-	// 立即执行一次监控检测
+	// 立即执行一次监控检测，结果以单元素 batch 上报
+	sample := manager.CollectMonitor(payload.Items)
 	writer := newOutboundWriter(a.getActiveConn(), a.outboundBuffer)
-	if err := manager.CollectAndSendMonitor(writer, payload.Items); err != nil {
-		slog.Warn("监控检测失败", "error", err)
+	if err := writer.WriteJSON(protocol.OutboundMessage{
+		Type: protocol.MessageTypeMetrics,
+		Data: protocol.MetricsBatch{Samples: []protocol.MetricSample{sample}},
+	}); err != nil {
+		slog.Warn("发送监控结果失败", "error", err)
 	} else {
 		slog.Info("服务监控检测完成，已上报或缓存监控项结果", "count", len(payload.Items))
 	}
@@ -511,26 +516,6 @@ func (a *Agent) metricsLoop(ctx context.Context) {
 	}
 }
 
-type bundleWriter struct {
-	items []protocol.MetricsPayload
-}
-
-func (w *bundleWriter) WriteJSON(v interface{}) error {
-	msg, ok := v.(protocol.OutboundMessage)
-	if !ok {
-		return fmt.Errorf("invalid message type for bundleWriter")
-	}
-
-	if msg.Type == protocol.MessageTypeMetrics {
-		payload, ok := msg.Data.(protocol.MetricsPayload)
-		if ok {
-			w.items = append(w.items, payload)
-			return nil
-		}
-	}
-	return fmt.Errorf("only metrics messages can be bundled")
-}
-
 // collectAndSendAllMetrics 采集并发送所有动态指标
 func (a *Agent) collectAndSendAllMetrics(manager *collector.Manager) error {
 	if manager == nil {
@@ -566,12 +551,15 @@ func newCollectTimer(name string) *collectTimer {
 
 func (t *collectTimer) done() {
 	d := time.Since(t.start)
-	if d > 500*time.Millisecond {
+	if d > 1500*time.Millisecond {
 		slog.Info("采集耗时", "collector", t.name, "duration", d)
 	}
 }
 
-// doCollectAndSend 执行实际的采集和发送
+// collectFn 单个采集器的采集函数签名
+type collectFn func() (protocol.MetricSample, error)
+
+// doCollectAndSend 采集所有动态指标，打包成一个 batch 上报
 func (a *Agent) doCollectAndSend(manager *collector.Manager) error {
 	conn := a.getActiveConn()
 	if conn != nil {
@@ -582,108 +570,55 @@ func (a *Agent) doCollectAndSend(manager *collector.Manager) error {
 		}
 	}
 
-	writer := newOutboundWriter(conn, a.outboundBuffer)
-	bw := &bundleWriter{}
+	// required=true 时采集失败计入错误；required=false 适用于 GPU/温度等可选项
+	collectors := []struct {
+		name     string
+		required bool
+		fn       collectFn
+	}{
+		{"cpu", true, manager.CollectCPU},
+		{"memory", true, manager.CollectMemory},
+		{"disk", true, manager.CollectDisk},
+		{"disk_io", true, manager.CollectDiskIO},
+		{"network", true, manager.CollectNetwork},
+		{"network_connection", true, manager.CollectNetworkConnection},
+		{"host", true, manager.CollectHost},
+		{"gpu", false, manager.CollectGPU},
+		{"temperature", false, manager.CollectTemperature},
+	}
+
+	samples := make([]protocol.MetricSample, 0, len(collectors))
 	var hasError bool
 
-	// CPU 动态指标
-	func() {
-		t := newCollectTimer("cpu")
-		defer t.done()
-		if err := manager.CollectAndSendCPU(bw); err != nil {
-			slog.Warn("采集CPU指标失败", "error", err)
-			hasError = true
-		}
-	}()
+	for _, c := range collectors {
+		func() {
+			t := newCollectTimer(c.name)
+			defer t.done()
+			sample, err := c.fn()
+			if err != nil {
+				if errors.Is(err, collector.ErrNoData) {
+					return
+				}
+				if c.required {
+					slog.Warn("采集指标失败", "collector", c.name, "error", err)
+					hasError = true
+				} else {
+					slog.Info("采集可选指标失败", "collector", c.name, "error", err)
+				}
+				return
+			}
+			samples = append(samples, sample)
+		}()
+	}
 
-	// 内存动态指标
-	func() {
-		t := newCollectTimer("memory")
-		defer t.done()
-		if err := manager.CollectAndSendMemory(bw); err != nil {
-			slog.Warn("采集内存指标失败", "error", err)
-			hasError = true
-		}
-	}()
+	writer := newOutboundWriter(conn, a.outboundBuffer)
 
-	// 磁盘指标
-	func() {
-		t := newCollectTimer("disk")
-		defer t.done()
-		if err := manager.CollectAndSendDisk(bw); err != nil {
-			slog.Warn("采集磁盘指标失败", "error", err)
-			hasError = true
-		}
-	}()
-
-	// 磁盘 IO 指标
-	func() {
-		t := newCollectTimer("disk_io")
-		defer t.done()
-		if err := manager.CollectAndSendDiskIO(bw); err != nil {
-			slog.Warn("采集磁盘IO指标失败", "error", err)
-			hasError = true
-		}
-	}()
-
-	// 网络指标
-	func() {
-		t := newCollectTimer("network")
-		defer t.done()
-		if err := manager.CollectAndSendNetwork(bw); err != nil {
-			slog.Warn("采集网络指标失败", "error", err)
-			hasError = true
-		}
-	}()
-
-	// 网络连接统计
-	func() {
-		t := newCollectTimer("network_connection")
-		defer t.done()
-		if err := manager.CollectAndSendNetworkConnection(bw); err != nil {
-			slog.Warn("采集网络连接统计失败", "error", err)
-			hasError = true
-		}
-	}()
-
-	// 主机信息（包含 Load）
-	func() {
-		t := newCollectTimer("host")
-		defer t.done()
-		if err := manager.CollectAndSendHost(bw); err != nil {
-			slog.Warn("采集主机信息失败", "error", err)
-			hasError = true
-		}
-	}()
-
-	// GPU 信息（可选）
-	func() {
-		t := newCollectTimer("gpu")
-		defer t.done()
-		if err := manager.CollectAndSendGPU(bw); err != nil {
-			slog.Info("采集GPU信息失败", "error", err)
-		}
-	}()
-
-	// 温度信息（可选）
-	func() {
-		t := newCollectTimer("temperature")
-		defer t.done()
-		if err := manager.CollectAndSendTemperature(bw); err != nil {
-			slog.Info("采集温度信息失败", "error", err)
-		}
-	}()
-
-	// 发送打包后的指标
-	if len(bw.items) > 0 {
-		bundle := protocol.BundlePayload{
-			Items: bw.items,
-		}
+	if len(samples) > 0 {
 		if err := writer.WriteJSON(protocol.OutboundMessage{
-			Type: protocol.MessageTypeBundle,
-			Data: bundle,
+			Type: protocol.MessageTypeMetrics,
+			Data: protocol.MetricsBatch{Samples: samples},
 		}); err != nil {
-			slog.Warn("发送打包指标失败", "error", err)
+			slog.Warn("发送指标 batch 失败", "error", err)
 			hasError = true
 		}
 	}

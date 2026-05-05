@@ -37,17 +37,18 @@ type AgentInfo struct {
 	Version  string `json:"version"`  // 版本号
 }
 
-// MetricsPayload 指标数据包装，发送端/接收端统一使用
-type MetricsPayload struct {
+// MetricSample 单条指标采样
+type MetricSample struct {
 	Type      MetricType  `json:"type"`
 	Data      interface{} `json:"data"`
 	Timestamp int64       `json:"timestamp,omitempty"` // 客户端采集时间(毫秒)
 }
 
-// BundlePayload 批量指标数据包装
-type BundlePayload struct {
-	Items []MetricsPayload `json:"items"`
+// MetricsBatch 一次采集周期内的批量指标，是 metrics 上报的唯一载体
+type MetricsBatch struct {
+	Samples []MetricSample `json:"samples"`
 }
+
 type MessageType string
 
 // 控制消息
@@ -58,9 +59,8 @@ const (
 	MessageTypeCommand     MessageType = "command"
 	MessageTypeCommandResp MessageType = "command_response"
 	MessageTypeUninstall   MessageType = "uninstall"
-	// 指标消息
+	// 指标消息（批量）
 	MessageTypeMetrics       MessageType = "metrics"
-	MessageTypeBundle        MessageType = "bundle"
 	MessageTypeMonitorConfig MessageType = "monitor_config"
 	// 防篡改消息
 	MessageTypeTamperProtect MessageType = "tamper_protect"

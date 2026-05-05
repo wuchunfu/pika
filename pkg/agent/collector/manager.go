@@ -1,18 +1,18 @@
 package collector
 
 import (
+	"errors"
 	"time"
 
 	"github.com/dushixiang/pika/internal/protocol"
 	"github.com/dushixiang/pika/pkg/agent/config"
 )
 
-// WebSocketWriter 定义 WebSocket 写入接口
-type WebSocketWriter interface {
-	WriteJSON(v interface{}) error
-}
+// ErrNoData 表示采集成功但当前周期无有效数据可上报（如 GPU 不存在、磁盘列表为空）。
+// 调用方应静默跳过，不视为错误。
+var ErrNoData = errors.New("no data")
 
-// Manager 采集器管理器
+// Manager 采集器管理器：纯采集，不做 I/O
 type Manager struct {
 	cpuCollector               *CPUCollector
 	memoryCollector            *MemoryCollector
@@ -24,7 +24,6 @@ type Manager struct {
 	temperatureCollector       *TemperatureCollector
 	gpuCollector               *GPUCollector
 	monitorCollector           *MonitorCollector
-	ddnsCollector              *DDNSCollector
 }
 
 // NewManager 创建采集器管理器
@@ -40,152 +39,115 @@ func NewManager(cfg *config.Config) *Manager {
 		temperatureCollector:       NewTemperatureCollector(),
 		gpuCollector:               NewGPUCollector(),
 		monitorCollector:           NewMonitorCollector(),
-		ddnsCollector:              nil, // DDNS 采集器需要配置后才能初始化
 	}
 }
 
-// CollectAndSendCPU 采集并发送 CPU 指标
-func (m *Manager) CollectAndSendCPU(conn WebSocketWriter) error {
-	cpuData, err := m.cpuCollector.Collect()
+// makeSample 构造一条 MetricSample
+func makeSample(t protocol.MetricType, data interface{}) protocol.MetricSample {
+	return protocol.MetricSample{
+		Type:      t,
+		Data:      data,
+		Timestamp: time.Now().UnixMilli(),
+	}
+}
+
+// CollectCPU 采集 CPU 指标
+func (m *Manager) CollectCPU() (protocol.MetricSample, error) {
+	data, err := m.cpuCollector.Collect()
 	if err != nil {
-		return err
+		return protocol.MetricSample{}, err
 	}
-
-	return m.sendMetrics(conn, protocol.MetricTypeCPU, cpuData)
+	return makeSample(protocol.MetricTypeCPU, data), nil
 }
 
-// CollectAndSendMemory 采集并发送内存指标
-func (m *Manager) CollectAndSendMemory(conn WebSocketWriter) error {
-	memData, err := m.memoryCollector.Collect()
+// CollectMemory 采集内存指标
+func (m *Manager) CollectMemory() (protocol.MetricSample, error) {
+	data, err := m.memoryCollector.Collect()
 	if err != nil {
-		return err
+		return protocol.MetricSample{}, err
 	}
-
-	return m.sendMetrics(conn, protocol.MetricTypeMemory, memData)
+	return makeSample(protocol.MetricTypeMemory, data), nil
 }
 
-// CollectAndSendDisk 采集并发送磁盘指标
-func (m *Manager) CollectAndSendDisk(conn WebSocketWriter) error {
-	diskDataList, err := m.diskCollector.Collect()
-	if err != nil || len(diskDataList) == 0 {
-		// 采集失败或无有效数据，不发送空列表
-		return nil
-	}
-	return m.sendMetrics(conn, protocol.MetricTypeDisk, diskDataList)
-}
-
-// CollectAndSendDiskIO 采集并发送磁盘 IO 指标
-func (m *Manager) CollectAndSendDiskIO(conn WebSocketWriter) error {
-	diskIODataList, err := m.diskIOCollector.Collect()
+// CollectDisk 采集磁盘指标。无有效数据时返回 ErrNoData。
+func (m *Manager) CollectDisk() (protocol.MetricSample, error) {
+	data, err := m.diskCollector.Collect()
 	if err != nil {
-		return err
+		return protocol.MetricSample{}, err
 	}
-	return m.sendMetrics(conn, protocol.MetricTypeDiskIO, diskIODataList)
+	if len(data) == 0 {
+		return protocol.MetricSample{}, ErrNoData
+	}
+	return makeSample(protocol.MetricTypeDisk, data), nil
 }
 
-// CollectAndSendNetwork 采集并发送网络指标
-func (m *Manager) CollectAndSendNetwork(conn WebSocketWriter) error {
-	networkDataList, err := m.networkCollector.Collect()
-	if err != nil || len(networkDataList) == 0 {
-		// 采集失败或无有效数据，不发送空列表
-		return nil
-	}
-	return m.sendMetrics(conn, protocol.MetricTypeNetwork, networkDataList)
-}
-
-// CollectAndSendNetworkConnection 采集并发送网络连接统计
-func (m *Manager) CollectAndSendNetworkConnection(conn WebSocketWriter) error {
-	connectionData, err := m.networkConnectionCollector.Collect()
+// CollectDiskIO 采集磁盘 IO 指标
+func (m *Manager) CollectDiskIO() (protocol.MetricSample, error) {
+	data, err := m.diskIOCollector.Collect()
 	if err != nil {
-		return err
+		return protocol.MetricSample{}, err
 	}
-	return m.sendMetrics(conn, protocol.MetricTypeNetworkConnection, connectionData)
+	return makeSample(protocol.MetricTypeDiskIO, data), nil
 }
 
-// CollectAndSendHost 采集并发送主机信息
-func (m *Manager) CollectAndSendHost(conn WebSocketWriter) error {
-	hostData, err := m.hostCollector.Collect()
+// CollectNetwork 采集网络指标。无有效数据时返回 ErrNoData。
+func (m *Manager) CollectNetwork() (protocol.MetricSample, error) {
+	data, err := m.networkCollector.Collect()
 	if err != nil {
-		return err
+		return protocol.MetricSample{}, err
 	}
-
-	return m.sendMetrics(conn, protocol.MetricTypeHost, hostData)
+	if len(data) == 0 {
+		return protocol.MetricSample{}, ErrNoData
+	}
+	return makeSample(protocol.MetricTypeNetwork, data), nil
 }
 
-// CollectAndSendGPU 采集并发送 GPU 指标
-func (m *Manager) CollectAndSendGPU(conn WebSocketWriter) error {
-	gpuDataList, err := m.gpuCollector.Collect()
-	if err != nil || len(gpuDataList) == 0 {
-		// GPU 监控不是必须的,失败或无数据时直接返回
-		return nil
-	}
-
-	return m.sendMetrics(conn, protocol.MetricTypeGPU, gpuDataList)
-}
-
-// CollectAndSendTemperature 采集并发送温度信息
-func (m *Manager) CollectAndSendTemperature(conn WebSocketWriter) error {
-	tempDataList, err := m.temperatureCollector.Collect()
-	if err != nil || len(tempDataList) == 0 {
-		// 温度监控不是必须的,失败或无数据时直接返回
-		return nil
-	}
-
-	return m.sendMetrics(conn, protocol.MetricTypeTemperature, tempDataList)
-}
-
-// CollectAndSendMonitor 采集并发送监控数据
-func (m *Manager) CollectAndSendMonitor(conn WebSocketWriter, items []protocol.MonitorItem) error {
-	monitorDataList := m.monitorCollector.Collect(items)
-	return m.sendMetrics(conn, protocol.MetricTypeMonitor, monitorDataList)
-}
-
-// UpdateDDNSConfig 更新 DDNS 配置
-func (m *Manager) UpdateDDNSConfig(config *protocol.DDNSConfigData) {
-	if config == nil || !config.Enabled {
-		m.ddnsCollector = nil
-		return
-	}
-
-	if m.ddnsCollector == nil {
-		m.ddnsCollector = NewDDNSCollector(config)
-	} else {
-		m.ddnsCollector.UpdateConfig(config)
-	}
-}
-
-// CollectAndSendDDNSIP 采集并发送 DDNS IP 地址
-func (m *Manager) CollectAndSendDDNSIP(conn WebSocketWriter) error {
-	if m.ddnsCollector == nil {
-		return nil // DDNS 未启用，静默返回
-	}
-
-	ipData, err := m.ddnsCollector.Collect()
+// CollectNetworkConnection 采集网络连接统计
+func (m *Manager) CollectNetworkConnection() (protocol.MetricSample, error) {
+	data, err := m.networkConnectionCollector.Collect()
 	if err != nil {
-		return err
+		return protocol.MetricSample{}, err
 	}
-
-	// 只有当至少有一个 IP 地址时才发送
-	if ipData.IPv4 == "" && ipData.IPv6 == "" {
-		return nil
-	}
-
-	return conn.WriteJSON(protocol.OutboundMessage{
-		Type: protocol.MessageTypeDDNSIPReport,
-		Data: ipData,
-	})
+	return makeSample(protocol.MetricTypeNetworkConnection, data), nil
 }
 
-// sendMetrics 发送指标数据
-func (m *Manager) sendMetrics(conn WebSocketWriter, metricType protocol.MetricType, data interface{}) error {
-	return conn.WriteJSON(protocol.OutboundMessage{
-		Type: protocol.MessageTypeMetrics,
-		Data: protocol.MetricsPayload{
-			Type:      metricType,
-			Data:      data,
-			Timestamp: time.Now().UnixMilli(),
-		},
-	})
+// CollectHost 采集主机信息（含 Load）
+func (m *Manager) CollectHost() (protocol.MetricSample, error) {
+	data, err := m.hostCollector.Collect()
+	if err != nil {
+		return protocol.MetricSample{}, err
+	}
+	return makeSample(protocol.MetricTypeHost, data), nil
+}
+
+// CollectGPU 采集 GPU 指标。无 GPU 时返回 ErrNoData（GPU 不是必备）
+func (m *Manager) CollectGPU() (protocol.MetricSample, error) {
+	data, err := m.gpuCollector.Collect()
+	if err != nil {
+		return protocol.MetricSample{}, err
+	}
+	if len(data) == 0 {
+		return protocol.MetricSample{}, ErrNoData
+	}
+	return makeSample(protocol.MetricTypeGPU, data), nil
+}
+
+// CollectTemperature 采集温度信息。无传感器时返回 ErrNoData（温度不是必备）
+func (m *Manager) CollectTemperature() (protocol.MetricSample, error) {
+	data, err := m.temperatureCollector.Collect()
+	if err != nil {
+		return protocol.MetricSample{}, err
+	}
+	if len(data) == 0 {
+		return protocol.MetricSample{}, ErrNoData
+	}
+	return makeSample(protocol.MetricTypeTemperature, data), nil
+}
+
+// CollectMonitor 采集服务监控数据（HTTP/TCP 探活）
+func (m *Manager) CollectMonitor(items []protocol.MonitorItem) protocol.MetricSample {
+	data := m.monitorCollector.Collect(items)
+	return makeSample(protocol.MetricTypeMonitor, data)
 }
 
 // GetPublicIP 通过 API 获取公网 IP 地址

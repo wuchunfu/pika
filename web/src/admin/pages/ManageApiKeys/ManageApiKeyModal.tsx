@@ -1,32 +1,31 @@
 import {useEffect} from 'react';
 import {App, Form, Input, Modal} from 'antd';
-import {generateApiKey, getApiKey, updateApiKeyName} from '@/api/apiKey.ts';
+import {generateManageApiKey, getManageApiKey, updateManageApiKeyName} from '@/api/manageApiKey.ts';
 import type {ApiKey, GenerateApiKeyRequest, UpdateApiKeyNameRequest} from '@/types';
 import {getErrorMessage} from '@/lib/utils';
 
-interface ApiKeyModalProps {
+interface ManageApiKeyModalProps {
     open: boolean;
-    apiKeyId?: string; // 如果有 id 则为编辑模式，否则为新建模式
+    apiKeyId?: string;
     onCancel: () => void;
-    onSuccess: (apiKey?: ApiKey) => void; // 新建时传递新生成的 API Key
+    onSuccess: (apiKey?: ApiKey) => void;
 }
 
-const ApiKeyModal = ({open, apiKeyId, onCancel, onSuccess}: ApiKeyModalProps) => {
+const ManageApiKeyModal = ({open, apiKeyId, onCancel, onSuccess}: ManageApiKeyModalProps) => {
     const {message: messageApi} = App.useApp();
     const [form] = Form.useForm();
     const isEditMode = !!apiKeyId;
 
-    // 加载 API Key 详情（编辑模式）
     useEffect(() => {
         if (open && apiKeyId) {
             const loadApiKey = async () => {
                 try {
-                    const response = await getApiKey(apiKeyId);
+                    const response = await getManageApiKey(apiKeyId);
                     form.setFieldsValue({
                         name: response.data.name,
                     });
                 } catch (error) {
-                    messageApi.error(getErrorMessage(error, '加载通信密钥详情失败'));
+                    messageApi.error(getErrorMessage(error, '加载 API 密钥详情失败'));
                 }
             };
             loadApiKey();
@@ -46,17 +45,15 @@ const ApiKeyModal = ({open, apiKeyId, onCancel, onSuccess}: ApiKeyModalProps) =>
             }
 
             if (isEditMode) {
-                // 编辑模式
                 const updateData: UpdateApiKeyNameRequest = {name};
-                await updateApiKeyName(apiKeyId, updateData);
+                await updateManageApiKeyName(apiKeyId, updateData);
                 messageApi.success('更新成功');
                 onSuccess();
             } else {
-                // 创建模式
                 const createData: GenerateApiKeyRequest = {name};
-                const response = await generateApiKey(createData);
-                messageApi.success('通信密钥生成成功');
-                onSuccess(response.data); // 传递新生成的 API Key
+                const response = await generateManageApiKey(createData);
+                messageApi.success('API密钥已生成');
+                onSuccess(response.data);
             }
         } catch (error: unknown) {
             if (typeof error === 'object' && error !== null && 'errorFields' in error) {
@@ -68,7 +65,7 @@ const ApiKeyModal = ({open, apiKeyId, onCancel, onSuccess}: ApiKeyModalProps) =>
 
     return (
         <Modal
-            title={isEditMode ? '编辑通信密钥' : '生成通信密钥'}
+            title={isEditMode ? '编辑API密钥' : '生成API密钥'}
             open={open}
             onOk={handleOk}
             onCancel={onCancel}
@@ -92,4 +89,4 @@ const ApiKeyModal = ({open, apiKeyId, onCancel, onSuccess}: ApiKeyModalProps) =>
     );
 };
 
-export default ApiKeyModal;
+export default ManageApiKeyModal;

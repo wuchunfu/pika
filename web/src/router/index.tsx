@@ -12,6 +12,7 @@ const AgentDetailPage = lazy(() => import('@admin/pages/Agents/AgentDetail'));
 const AgentInstallOneClickPage = lazy(() => import('@admin/pages/Agents/AgentInstallOneClick'));
 const AgentInstallManualPage = lazy(() => import('@admin/pages/Agents/AgentInstallManual'));
 const ApiKeyListPage = lazy(() => import('@admin/pages/ApiKeys/ApiKeyList'));
+const ManageApiKeyListPage = lazy(() => import('@admin/pages/ManageApiKeys/ManageApiKeyList'));
 const SettingsPage = lazy(() => import('@admin/pages/Settings'));
 const ServerListPage = lazy(() => import('@portal/pages/ServerList.tsx'));
 const ServerDetailPage = lazy(() => import('@portal/pages/ServerDetail.tsx'));
@@ -105,6 +106,10 @@ const router = createBrowserRouter([
             {
                 path: 'api-keys',
                 element: lazyLoad(ApiKeyListPage),
+            },
+            {
+                path: 'manage-api-keys',
+                element: lazyLoad(ManageApiKeyListPage),
             },
             {
                 path: 'monitors',

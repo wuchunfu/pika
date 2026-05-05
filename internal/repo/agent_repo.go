@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/dushixiang/pika/internal/models"
 	"github.com/go-orz/orz"
@@ -179,6 +180,44 @@ func (r *AgentRepo) FindPublicAgentByID(ctx context.Context, id string) (*models
 		return nil, err
 	}
 	return &agent, nil
+}
+
+// FindByShortID 通过ID前缀查找探针（短ID匹配）
+func (r *AgentRepo) FindByShortID(ctx context.Context, shortID string) (models.Agent, error) {
+	var agents []models.Agent
+	err := r.db.WithContext(ctx).
+		Where("id LIKE ?", shortID+"-%").
+		Limit(2).
+		Find(&agents).Error
+	if err != nil {
+		return models.Agent{}, err
+	}
+	if len(agents) == 0 {
+		return models.Agent{}, gorm.ErrRecordNotFound
+	}
+	if len(agents) > 1 {
+		return models.Agent{}, fmt.Errorf("短ID匹配到多个探针，请使用完整ID")
+	}
+	return agents[0], nil
+}
+
+// FindPublicAgentByShortID 通过ID前缀查找公开可见探针（短ID匹配）
+func (r *AgentRepo) FindPublicAgentByShortID(ctx context.Context, shortID string) (*models.Agent, error) {
+	var agents []models.Agent
+	err := r.db.WithContext(ctx).
+		Where("id LIKE ? AND visibility = ?", shortID+"-%", "public").
+		Limit(2).
+		Find(&agents).Error
+	if err != nil {
+		return nil, err
+	}
+	if len(agents) == 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+	if len(agents) > 1 {
+		return nil, fmt.Errorf("短ID匹配到多个探针，请使用完整ID")
+	}
+	return &agents[0], nil
 }
 
 // GetAllTags 获取所有探针的标签（去重）

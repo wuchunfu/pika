@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, App, Button, Card, Input, Select, Space, Spin, Typography } from 'antd';
-import { CopyIcon } from 'lucide-react';
+import { CopyIcon, Plus } from 'lucide-react';
 import copy from 'copy-to-clipboard';
+import { Link } from 'react-router-dom';
+import type { ApiKey } from '@/types';
 import {
     AgentInstallLayout,
     ConfigHelper,
@@ -10,6 +12,7 @@ import {
 } from './AgentInstallShared';
 import { useAgentInstallConfig } from './useAgentInstallConfig';
 import { getAgentInstallConfig, saveAgentInstallConfig } from '@/api/property';
+import ApiKeyModal from '../ApiKeys/ApiKeyModal';
 
 const { Paragraph } = Typography;
 
@@ -17,19 +20,24 @@ const AgentInstallOneClick = () => {
     const { message } = App.useApp();
     const {
         apiKeys,
+        selectedApiKeyId,
+        setSelectedApiKeyId,
         selectedApiKey,
-        setSelectedApiKey,
         customAgentName,
         setCustomAgentName,
         loading,
         backendServerUrl,
         apiKeyOptions,
+        refetchApiKeys,
     } = useAgentInstallConfig();
 
     const [serverUrl, setServerUrl] = useState<string>('');
     const [serverUrlError, setServerUrlError] = useState<string>('');
     const [serverUrlLoading, setServerUrlLoading] = useState(true);
-    const effectiveServerUrl = serverUrl || backendServerUrl;
+    const [saving, setSaving] = useState(false);
+    const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
+    const [newApiKeyData, setNewApiKeyData] = useState<ApiKey | null>(null);
+    const effectiveServerUrl = serverUrl.trim() || backendServerUrl;
 
     // 加载服务端地址配置
     useEffect(() => {
@@ -49,23 +57,23 @@ const AgentInstallOneClick = () => {
         void fetchConfig();
     }, []);
 
-    // 保存服务端地址配置
-    const handleServerUrlBlur = async (value: string) => {
+    // 保存服务端地址配置（防抖）
+    const saveServerUrl = async (value: string) => {
         const trimmed = value.trim();
-        setServerUrl(trimmed);
         if (!trimmed) {
             setServerUrlError('请先配置服务端地址');
-            message.error('请先配置服务端地址');
             return;
         }
         setServerUrlError('');
-
+        setSaving(true);
         try {
             await saveAgentInstallConfig({ serverUrl: trimmed });
             message.success('服务端地址已保存');
         } catch (error) {
             console.error('保存服务端地址失败:', error);
             message.error('保存服务端地址失败');
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -73,7 +81,16 @@ const AgentInstallOneClick = () => {
         const currentUrl = window.location.origin;
         setServerUrl(currentUrl);
         setServerUrlError('');
-        void handleServerUrlBlur(currentUrl);
+        void saveServerUrl(currentUrl);
+    };
+
+    const handleCreateApiKeySuccess = (apiKey?: ApiKey) => {
+        setIsCreateModalVisible(false);
+        if (apiKey) {
+            setNewApiKeyData(apiKey);
+            void refetchApiKeys();
+            setSelectedApiKeyId(apiKey.id);
+        }
     };
 
     const installCommand = useMemo(() => {
@@ -83,7 +100,7 @@ const AgentInstallOneClick = () => {
         const trimmedName = customAgentName.trim();
         const nameParam = trimmedName ? `&name=${encodeURIComponent(trimmedName)}` : '';
         return `curl -fsSL "${effectiveServerUrl}/api/agent/install.sh?token=${selectedApiKey}${nameParam}" | sudo bash`;
-    }, [backendServerUrl, selectedApiKey, customAgentName, serverUrl]);
+    }, [effectiveServerUrl, selectedApiKey, customAgentName]);
 
     const copyToClipboard = (text: string) => {
         copy(text);
@@ -101,18 +118,19 @@ const AgentInstallOneClick = () => {
                             </div>
                             <Spin spinning={serverUrlLoading}>
                                 <Input
-                                    key={serverUrl}
                                     placeholder="例如: https://monitor.example.com"
-                                    defaultValue={serverUrl}
-                                    onBlur={(e) => {
-                                        void handleServerUrlBlur(e.currentTarget.value);
-                                    }}
+                                    value={serverUrl}
+                                    onChange={(e) => setServerUrl(e.target.value)}
+                                    onBlur={(e) => void saveServerUrl(e.target.value)}
                                     className="w-full"
                                 />
                             </Spin>
-                            <div className="mt-2">
+                            <div className="mt-2 flex gap-2">
                                 <Button size="small" onClick={handleFillCurrentUrl}>
                                     使用当前访问地址
+                                </Button>
+                                <Button size="small" loading={saving} onClick={() => void saveServerUrl(serverUrl)}>
+                                    保存
                                 </Button>
                             </div>
                             {serverUrlError ? (
@@ -125,13 +143,23 @@ const AgentInstallOneClick = () => {
                         </div>
 
                         <div>
-                            <div className="mb-1 text-gray-600 dark:text-slate-400">选择 API Token</div>
+                            <div className="mb-1 flex items-center justify-between">
+                                <span className="text-gray-600 dark:text-slate-400">选择通信密钥</span>
+                                <Button
+                                    size="small"
+                                    type="primary"
+                                    icon={<Plus size={14}/>}
+                                    onClick={() => setIsCreateModalVisible(true)}
+                                >
+                                    创建密钥
+                                </Button>
+                            </div>
                             {apiKeys.length === 0 ? (
                                 <Alert
-                                    message="暂无可用的 API Token"
+                                    message="暂无可用的通信密钥"
                                     description={
                                         <span>
-                                            请先前往 <a href="/admin/api-keys">API密钥管理</a> 页面生成一个 API Token
+                                            请点击上方"创建密钥"按钮生成一个通信密钥，或前往 <Link to="/admin/api-keys">通信密钥管理</Link> 页面
                                         </span>
                                     }
                                     type="warning"
@@ -141,28 +169,51 @@ const AgentInstallOneClick = () => {
                             ) : (
                                 <Select
                                     className="w-full"
-                                    value={selectedApiKey}
-                                    onChange={setSelectedApiKey}
+                                    value={selectedApiKeyId}
+                                    onChange={setSelectedApiKeyId}
                                     options={apiKeyOptions}
                                     loading={loading}
-                                    placeholder="请选择 API Token"
+                                    placeholder="请选择通信密钥"
                                 />
                             )}
                         </div>
+
+                        {newApiKeyData && (
+                            <Alert
+                                message="新创建的通信密钥"
+                                description={
+                                    <div className="space-y-2">
+                                        <div>
+                                            <span className="text-gray-600">密钥名称：</span>
+                                            <span className="font-medium">{newApiKeyData.name}</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-gray-600">完整密钥：</span>
+                                            <code className="text-xs bg-gray-100 px-2 py-1 rounded font-mono break-all">
+                                                {newApiKeyData.key}
+                                            </code>
+                                        </div>
+                                        <div className="text-xs text-yellow-600">
+                                            请妥善保管此密钥，关闭后将无法再次查看完整密钥
+                                        </div>
+                                    </div>
+                                }
+                                type="success"
+                                showIcon
+                                className="mt-2"
+                                onClose={() => setNewApiKeyData(null)}
+                                closable
+                            />
+                        )}
 
                         <div>
                             <div className="mb-1 text-gray-600 dark:text-slate-400">
                                 自定义名称 <span className="text-xs text-gray-400">(可选，留空则使用主机名)</span>
                             </div>
                             <Input
-                                key={customAgentName}
                                 placeholder="请输入自定义名称，例如: my-server-01"
-                                defaultValue={customAgentName}
-                                onBlur={(e) => {
-                                    const trimmed = e.currentTarget.value.trim();
-                                    setCustomAgentName(trimmed);
-                                    e.currentTarget.value = trimmed;
-                                }}
+                                value={customAgentName}
+                                onChange={(e) => setCustomAgentName(e.target.value)}
                                 className="w-full"
                                 allowClear
                             />
@@ -206,6 +257,13 @@ const AgentInstallOneClick = () => {
                 <ServiceHelper os={AGENT_NAME} />
                 <ConfigHelper />
             </Space>
+
+            <ApiKeyModal
+                open={isCreateModalVisible}
+                apiKeyId={undefined}
+                onCancel={() => setIsCreateModalVisible(false)}
+                onSuccess={handleCreateApiKeySuccess}
+            />
         </AgentInstallLayout>
     );
 };

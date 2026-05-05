@@ -107,3 +107,11 @@ func (r *ApiKeyRepo) UpdateEnabled(ctx context.Context, id string, enabled bool)
 		Where("id = ?", id).
 		Update("enabled", enabled).Error
 }
+
+// FillEmptyType 回填旧版本密钥类型
+func (r *ApiKeyRepo) FillEmptyType(ctx context.Context, keyType string) error {
+	return r.db.WithContext(ctx).
+		Model(&models.ApiKey{}).
+		Where("type = '' OR type IS NULL").
+		Update("type", keyType).Error
+}

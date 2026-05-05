@@ -15,6 +15,7 @@ import (
 	"github.com/dushixiang/pika/internal/migrate"
 	"github.com/dushixiang/pika/internal/models"
 	"github.com/dushixiang/pika/internal/scheduler"
+	"github.com/dushixiang/pika/internal/service"
 	"github.com/dushixiang/pika/pkg/replace"
 	"github.com/dushixiang/pika/pkg/version"
 	"github.com/dushixiang/pika/web"
@@ -75,6 +76,10 @@ func setup(app *orz.App) error {
 
 	// 初始化默认属性配置
 	ctx := context.Background()
+	if err := components.ApiKeyService.FillLegacyApiKeyType(ctx); err != nil {
+		app.Logger().Warn("回填旧版 API Key 类型失败", zap.Error(err))
+		// 不返回错误，ValidateApiKey 仍会兼容空类型旧密钥
+	}
 	if err := initDefaultProperties(ctx, components, app.Logger()); err != nil {
 		app.Logger().Error("初始化默认属性配置失败", zap.Error(err))
 		// 不返回错误，继续启动
@@ -216,9 +221,9 @@ func setupApi(app *orz.App, components *AppComponents) {
 	// WebSocket 路由（探针连接）
 	e.GET("/ws/agent", components.AgentHandler.HandleWebSocket)
 
-	// 管理员 API 路由（需要认证）
+	// 管理员 API 路由（需要认证，支持 JWT Token 或 API Key）
 	adminApi := e.Group("/api/admin")
-	adminApi.Use(JWTAuthMiddleware(components.AccountHandler))
+	adminApi.Use(UnifiedAuthMiddleware(components.AccountHandler, components.ApiKeyService))
 	{
 		adminApi.GET("/version", func(c echo.Context) error {
 			return c.JSON(http.StatusOK, orz.Map{
@@ -233,7 +238,9 @@ func setupApi(app *orz.App, components *AppComponents) {
 		// API密钥管理
 		adminApi.GET("/api-keys", components.ApiKeyHandler.Paging)
 		adminApi.POST("/api-keys", components.ApiKeyHandler.Create)
+		adminApi.POST("/admin-api-keys", components.ApiKeyHandler.CreateAdmin)
 		adminApi.GET("/api-keys/:id", components.ApiKeyHandler.Get)
+		adminApi.GET("/api-keys/:id/raw", components.ApiKeyHandler.GetRaw)
 		adminApi.PUT("/api-keys/:id", components.ApiKeyHandler.Update)
 		adminApi.DELETE("/api-keys/:id", components.ApiKeyHandler.Delete)
 		adminApi.POST("/api-keys/:id/enable", components.ApiKeyHandler.Enable)
@@ -522,3 +529,64 @@ func OptionalJWTAuthMiddleware(accountHandler *handler.AccountHandler) echo.Midd
 }
 
 // APIKeyAuthMiddleware 使用 API Key 进行认证
+func APIKeyAuthMiddleware(apiKeyService *service.ApiKeyService) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			authHeader := c.Request().Header.Get("Authorization")
+			if authHeader == "" {
+				return echo.NewHTTPError(http.StatusUnauthorized, "未提供认证令牌")
+			}
+			const bearerPrefix = "Bearer "
+			if len(authHeader) < len(bearerPrefix) || authHeader[:len(bearerPrefix)] != bearerPrefix {
+				return echo.NewHTTPError(http.StatusUnauthorized, "认证令牌格式错误")
+			}
+			key := authHeader[len(bearerPrefix):]
+			apiKey, err := apiKeyService.ValidateApiKey(c.Request().Context(), key, "admin")
+			if err != nil {
+				return echo.NewHTTPError(http.StatusUnauthorized, "API Key 无效")
+			}
+			c.Set("userID", apiKey.CreatedBy)
+			c.Set("username", apiKey.CreatedBy)
+			c.Set("authenticated", true)
+			return next(c)
+		}
+	}
+}
+
+// UnifiedAuthMiddleware 统一认证中间件：优先尝试 JWT Token，失败后尝试 API Key
+func UnifiedAuthMiddleware(accountHandler *handler.AccountHandler, apiKeyService *service.ApiKeyService) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			authHeader := c.Request().Header.Get("Authorization")
+			if authHeader == "" {
+				return echo.NewHTTPError(http.StatusUnauthorized, "未提供认证令牌")
+			}
+			const bearerPrefix = "Bearer "
+			if len(authHeader) < len(bearerPrefix) || authHeader[:len(bearerPrefix)] != bearerPrefix {
+				return echo.NewHTTPError(http.StatusUnauthorized, "认证令牌格式错误")
+			}
+			token := authHeader[len(bearerPrefix):]
+
+			// 先尝试 JWT Token
+			claims, err := accountHandler.ValidateToken(token)
+			if err == nil {
+				c.Set("userID", claims.UserID)
+				c.Set("username", claims.Username)
+				c.Set("authType", "jwt")
+				c.Set("authenticated", true)
+				return next(c)
+			}
+
+			// 再尝试 API Key（仅 admin 类型可用于管理接口）
+			apiKey, err := apiKeyService.ValidateApiKey(c.Request().Context(), token, "admin")
+			if err != nil {
+				return echo.NewHTTPError(http.StatusUnauthorized, "认证令牌无效")
+			}
+			c.Set("userID", apiKey.CreatedBy)
+			c.Set("username", apiKey.CreatedBy)
+			c.Set("authType", "api_key")
+			c.Set("authenticated", true)
+			return next(c)
+		}
+	}
+}

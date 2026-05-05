@@ -78,7 +78,7 @@ const ServerCard: FC<ServerCardProps> = ({server}) => {
         : 0;
 
     return (
-        <Link to={`/servers/${server.id}`}>
+        <Link to={`/servers/${server.id.substring(0, 8)}`}>
             <CyberCard>
                 <div className="relative z-10 p-5 space-y-2">
                     {/* 顶部：名称和状态 */}

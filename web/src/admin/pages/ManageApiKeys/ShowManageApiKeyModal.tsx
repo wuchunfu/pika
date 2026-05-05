@@ -5,13 +5,13 @@ import type {ApiKey} from '@/types';
 import {App} from 'antd';
 import copy from 'copy-to-clipboard';
 
-interface ShowApiKeyModalProps {
+interface ShowManageApiKeyModalProps {
     open: boolean;
     apiKey: ApiKey | null;
     onClose: () => void;
 }
 
-const ShowApiKeyModal = ({open, apiKey, onClose}: ShowApiKeyModalProps) => {
+const ShowManageApiKeyModal = ({open, apiKey, onClose}: ShowManageApiKeyModalProps) => {
     const {message: messageApi} = App.useApp();
 
     const handleCopyApiKey = (key: string) => {
@@ -21,7 +21,7 @@ const ShowApiKeyModal = ({open, apiKey, onClose}: ShowApiKeyModalProps) => {
 
     return (
         <Modal
-            title="通信密钥已生成"
+            title="API密钥已生成"
             open={open}
             onOk={onClose}
             onCancel={onClose}
@@ -55,7 +55,7 @@ const ShowApiKeyModal = ({open, apiKey, onClose}: ShowApiKeyModalProps) => {
                     <div className="text-base font-semibold text-gray-900 dark:text-white">{apiKey?.name}</div>
                 </div>
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">通信密钥</label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">API密钥</label>
                     <code
                         className="block w-full bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 dark:text-gray-200 rounded px-3 py-2 text-sm font-mono break-all">
                         {apiKey?.key}
@@ -66,4 +66,4 @@ const ShowApiKeyModal = ({open, apiKey, onClose}: ShowApiKeyModalProps) => {
     );
 };
 
-export default ShowApiKeyModal;
+export default ShowManageApiKeyModal;

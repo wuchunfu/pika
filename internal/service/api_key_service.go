@@ -27,11 +27,15 @@ func NewApiKeyService(logger *zap.Logger, db *gorm.DB) *ApiKeyService {
 }
 
 // GenerateApiKey 生成API密钥
-func (s *ApiKeyService) GenerateApiKey(ctx context.Context, name, userID string) (*models.ApiKey, error) {
+func (s *ApiKeyService) GenerateApiKey(ctx context.Context, name, userID, keyType string) (*models.ApiKey, error) {
 	// 生成32字节随机密钥
 	key, err := s.generateSecureKey(32)
 	if err != nil {
 		return nil, err
+	}
+
+	if keyType == "" {
+		keyType = "agent"
 	}
 
 	now := time.Now().UnixMilli()
@@ -39,6 +43,7 @@ func (s *ApiKeyService) GenerateApiKey(ctx context.Context, name, userID string)
 		ID:        uuid.NewString(),
 		Name:      name,
 		Key:       key,
+		Type:      keyType,
 		Enabled:   true,
 		CreatedBy: userID,
 		CreatedAt: now,
@@ -58,14 +63,28 @@ func (s *ApiKeyService) GenerateApiKey(ctx context.Context, name, userID string)
 }
 
 // ValidateApiKey 验证API密钥
-func (s *ApiKeyService) ValidateApiKey(ctx context.Context, key string) (*models.ApiKey, error) {
+func (s *ApiKeyService) ValidateApiKey(ctx context.Context, key string, keyType string) (*models.ApiKey, error) {
 	if key == "" {
 		return nil, errors.New("api key is required")
 	}
 
 	apiKey, err := s.ApiKeyRepo.FindEnabledByKey(ctx, key)
 	if err != nil {
-		s.logger.Warn("invalid api key", zap.String("key", key))
+		s.logger.Warn("invalid api key", zap.String("key", maskSecret(key)))
+		return nil, errors.New("invalid api key")
+	}
+
+	// 兼容旧版本没有 type 字段值的通信密钥。
+	if apiKey.Type == "" {
+		apiKey.Type = "agent"
+	}
+
+	// 验证密钥类型匹配
+	if keyType != "" && apiKey.Type != keyType {
+		s.logger.Warn("api key type mismatch",
+			zap.String("keyID", apiKey.ID),
+			zap.String("expected", keyType),
+			zap.String("actual", apiKey.Type))
 		return nil, errors.New("invalid api key")
 	}
 
@@ -134,6 +153,15 @@ func (s *ApiKeyService) DeleteApiKey(ctx context.Context, id string) error {
 	return nil
 }
 
+// FillLegacyApiKeyType 将旧版本未标记类型的密钥回填为通信密钥。
+func (s *ApiKeyService) FillLegacyApiKeyType(ctx context.Context) error {
+	if err := s.ApiKeyRepo.FillEmptyType(ctx, "agent"); err != nil {
+		return err
+	}
+	s.logger.Info("legacy api key type filled")
+	return nil
+}
+
 // generateSecureKey 生成安全的随机密钥
 func (s *ApiKeyService) generateSecureKey(length int) (string, error) {
 	bytes := make([]byte, length)
@@ -141,4 +169,14 @@ func (s *ApiKeyService) generateSecureKey(length int) (string, error) {
 		return "", err
 	}
 	return base64.URLEncoding.EncodeToString(bytes), nil
+}
+
+func maskSecret(secret string) string {
+	if secret == "" {
+		return ""
+	}
+	if len(secret) <= 8 {
+		return "****"
+	}
+	return secret[:4] + "..." + secret[len(secret)-4:]
 }

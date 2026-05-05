@@ -174,7 +174,7 @@ const SSHLoginEvents: React.FC<SSHLoginEventsProps> = ({agentId}) => {
                 dataSource={eventsPaging?.items || []}
                 loading={isLoading || isFetching}
                 rowKey="id"
-                scroll={{x: 'max-content'}}
+                scroll={{x: 1000}}
                 pagination={{
                     current: pageIndex,
                     pageSize,

@@ -194,12 +194,12 @@ export const MonitorChart = ({agentId, timeRange, start, end}: MonitorChartProps
 
         // 收集所有监控任务的数据
         const seriesDataArray: Array<{ key: string; data: Array<{ timestamp: number; value: number }> }> = [];
-        
+
         series.forEach((s) => {
             const monitorKey = s.labels?.monitor_name || s.labels?.monitor_id || s.name;
             if (!selectedMonitors.has(monitorKey)) return;
             if (!s.data || s.data.length === 0) return;
-            
+
             seriesDataArray.push({
                 key: monitorKey,
                 data: [...s.data].sort((a, b) => a.timestamp - b.timestamp)

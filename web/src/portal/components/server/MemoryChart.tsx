@@ -37,7 +37,7 @@ export const MemoryChart = ({agentId, timeRange, start, end}: MemoryChartProps) 
             usage: Number(point.value.toFixed(2)),
             timestamp: point.timestamp,
         }));
-    }, [metricsResponse, timeRange, start, end]);
+    }, [metricsResponse]);
 
     // 渲染
     if (isLoading) {

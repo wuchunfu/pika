@@ -10,6 +10,8 @@ import type {
 } from '@/types';
 import qs from "qs";
 
+export type MetricsAggregation = 'avg' | 'max' | 'raw';
+
 export interface GetAgentMetricsRequest {
     agentId: string;
     type: 'cpu' | 'memory' | 'disk' | 'network' | 'network_connection' | 'disk_io' | 'gpu' | 'temperature' | 'monitor';
@@ -17,6 +19,8 @@ export interface GetAgentMetricsRequest {
     start?: number; // 自定义开始时间（毫秒时间戳）
     end?: number; // 自定义结束时间（毫秒时间戳）
     interface?: string; // 网卡过滤参数（仅对 network 类型有效）
+    // aggregation 缺省时后端返回 avg+max 两条 series（band 模式）；显式传值锁定为单条
+    aggregation?: MetricsAggregation;
 }
 
 // 新的统一数据格式
@@ -61,7 +65,7 @@ export const getAgentLatestMetricsForAdmin = (agentId: string) => {
 };
 
 export const getAgentMetrics = (params: GetAgentMetricsRequest) => {
-    const {agentId, type, range = '1h', start, end, interface: interfaceName} = params;
+    const {agentId, type, range = '1h', start, end, interface: interfaceName, aggregation} = params;
     const query = new URLSearchParams();
     query.append('type', type);
     if (start !== undefined && end !== undefined) {
@@ -72,6 +76,9 @@ export const getAgentMetrics = (params: GetAgentMetricsRequest) => {
     }
     if (interfaceName) {
         query.append('interface', interfaceName);
+    }
+    if (aggregation) {
+        query.append('aggregation', aggregation);
     }
     return get<GetAgentMetricsResponse>(`/agents/${agentId}/metrics?${query.toString()}`);
 };

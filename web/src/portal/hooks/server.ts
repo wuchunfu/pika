@@ -5,6 +5,7 @@ import {
     getAgentMetrics,
     getAvailableNetworkInterfaces,
     type GetAgentMetricsRequest,
+    type MetricsAggregation,
 } from '@/api/agent';
 
 interface UseMetricsQueryOptions {
@@ -14,6 +15,7 @@ interface UseMetricsQueryOptions {
     start?: number;
     end?: number;
     interfaceName?: string;
+    aggregation?: MetricsAggregation;
 }
 
 /**
@@ -50,9 +52,9 @@ export const useLatestMetricsQuery = (agentId?: string) => {
  * @param options 查询选项
  * @returns 历史指标查询结果
  */
-export const useMetricsQuery = ({agentId, type, range, start, end, interfaceName}: UseMetricsQueryOptions) => {
+export const useMetricsQuery = ({agentId, type, range, start, end, interfaceName, aggregation}: UseMetricsQueryOptions) => {
     return useQuery({
-        queryKey: ['agent', agentId, 'metrics', type, range, start, end, interfaceName],
+        queryKey: ['agent', agentId, 'metrics', type, range, start, end, interfaceName, aggregation],
         queryFn: () =>
             getAgentMetrics({
                 agentId,
@@ -61,6 +63,7 @@ export const useMetricsQuery = ({agentId, type, range, start, end, interfaceName
                 start,
                 end,
                 interface: interfaceName,
+                aggregation,
             }),
         enabled: !!agentId,
         // refetchInterval: 30000, // 30秒自动刷新

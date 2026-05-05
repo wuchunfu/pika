@@ -32,11 +32,10 @@ export const NetworkConnectionChart = ({agentId, timeRange, start, end}: Network
     const chartData = useMemo(() => {
         if (!metricsResponse?.data.series || metricsResponse.data.series?.length === 0) return [];
 
-        // 按时间戳聚合所有连接状态系列
         const timeMap = new Map<number, any>();
 
         metricsResponse.data.series?.forEach(series => {
-            const stateName = series.name; // established, time_wait, close_wait, listen
+            const stateName = series.name;
             series.data.forEach(point => {
                 if (!timeMap.has(point.timestamp)) {
                     timeMap.set(point.timestamp, {
@@ -49,13 +48,12 @@ export const NetworkConnectionChart = ({agentId, timeRange, start, end}: Network
                 }
 
                 const existing = timeMap.get(point.timestamp)!;
-                // 直接使用下划线命名
                 existing[stateName] = Number(point.value.toFixed(0));
             });
         });
 
         return Array.from(timeMap.values()).sort((a, b) => a.timestamp - b.timestamp);
-    }, [metricsResponse, timeRange, start, end]);
+    }, [metricsResponse]);
 
     // 渲染
     if (isLoading) {

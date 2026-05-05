@@ -37,13 +37,12 @@ export const DiskIOChart = ({agentId, timeRange, start, end}: DiskIOChartProps) 
 
         if (!readSeries || !writeSeries) return [];
 
-        // 按时间戳对齐数据
         const timeMap = new Map<number, any>();
 
         readSeries.data.forEach(point => {
             timeMap.set(point.timestamp, {
                 timestamp: point.timestamp,
-                read: Number((point.value / 1024 / 1024).toFixed(2)), // 转换为 MB/s
+                read: Number((point.value / 1024 / 1024).toFixed(2)),
             });
         });
 
@@ -55,7 +54,7 @@ export const DiskIOChart = ({agentId, timeRange, start, end}: DiskIOChartProps) 
         });
 
         return Array.from(timeMap.values());
-    }, [metricsResponse, timeRange, start, end]);
+    }, [metricsResponse]);
 
     // 渲染
     if (isLoading) {

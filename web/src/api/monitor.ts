@@ -69,17 +69,22 @@ export interface GetMonitorHistoryRequest {
     range?: string;
     start?: number;
     end?: number;
+    // 监控详情页目前按单条均值线渲染；不传时后端会返回 avg+max 两条 series
+    aggregation?: 'avg' | 'max' | 'raw';
 }
 
 // 公开接口 - 获取指定监控的历史数据（VictoriaMetrics 原始时序数据）
 export const getMonitorHistory = (id: string, params: GetMonitorHistoryRequest = {}) => {
-    const {range = '15m', start, end} = params;
+    const {range = '15m', start, end, aggregation} = params;
     const query = new URLSearchParams();
     if (start !== undefined && end !== undefined) {
         query.append('start', start.toString());
         query.append('end', end.toString());
     } else {
         query.append('range', range);
+    }
+    if (aggregation) {
+        query.append('aggregation', aggregation);
     }
     return get<GetMetricsResponse>(`/monitors/${encodeURIComponent(id)}/history?${query.toString()}`);
 };

@@ -60,7 +60,7 @@ export const NetworkChart = ({agentId, timeRange, start, end}: NetworkChartProps
         uploadSeries.data.forEach(point => {
             timeMap.set(point.timestamp, {
                 timestamp: point.timestamp,
-                upload: Number((point.value / 1024 / 1024).toFixed(2)), // 转换为 MB/s
+                upload: Number((point.value / 1024 / 1024).toFixed(2)),
             });
         });
 
@@ -72,7 +72,7 @@ export const NetworkChart = ({agentId, timeRange, start, end}: NetworkChartProps
         });
 
         return Array.from(timeMap.values());
-    }, [metricsResponse, timeRange, start, end]);
+    }, [metricsResponse]);
 
     // 网卡选择器
     const interfaceSelector = availableInterfaces.length > 0 && (

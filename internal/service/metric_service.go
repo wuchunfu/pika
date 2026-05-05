@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 	"sort"
 	"strconv"
@@ -651,33 +652,46 @@ func (s *MetricService) buildPromQLQueries(agentID, metricType string, interface
 		}}
 	}
 
-	if aggregation != "" {
-		for i := range queries {
-			queries[i].Query = wrapAggregationQuery(queries[i].Query, aggregation, step)
-		}
-	}
-
-	return queries
+	return expandAggregationQueries(queries, aggregation, step)
 }
 
-func wrapAggregationQuery(query, aggregation string, step time.Duration) string {
-	if aggregation == "" || step <= 0 {
-		return query
-	}
-
+// expandAggregationQueries 按聚合模式展开查询：
+//   - aggregation="" / "max" → 单条 max_over_time（默认；用峰值聚合，避免 step 增大时丢峰）
+//   - aggregation="avg"      → 单条 avg_over_time
+//   - aggregation="raw"      → 原查询，不加窗口函数
+//
+// 当 step <= 0 时退化为 raw（无法计算窗口）。
+func expandAggregationQueries(queries []metric.QueryDefinition, aggregation string, step time.Duration) []metric.QueryDefinition {
 	windowSeconds := int(step.Seconds())
-	if windowSeconds <= 0 {
-		return query
+	if aggregation == "raw" || windowSeconds <= 0 {
+		return queries
 	}
 
 	window := fmt.Sprintf("%ds", windowSeconds)
-	switch aggregation {
-	case "avg":
-		return fmt.Sprintf(`avg_over_time((%s)[%s:])`, query, window)
-	case "max":
-		return fmt.Sprintf(`max_over_time((%s)[%s:])`, query, window)
-	default:
-		return query
+	fn := "max_over_time"
+	agg := "max"
+	if aggregation == "avg" {
+		fn = "avg_over_time"
+		agg = "avg"
+	}
+
+	expanded := make([]metric.QueryDefinition, 0, len(queries))
+	for _, q := range queries {
+		wrapped := fmt.Sprintf(`%s((%s)[%s:])`, fn, q.Query, window)
+		expanded = append(expanded, withAggLabel(q, agg, wrapped))
+	}
+	return expanded
+}
+
+// withAggLabel 复制 QueryDefinition，替换 PromQL 并附加 agg 标签
+func withAggLabel(q metric.QueryDefinition, agg, query string) metric.QueryDefinition {
+	labels := make(map[string]string, len(q.Labels)+1)
+	maps.Copy(labels, q.Labels)
+	labels["agg"] = agg
+	return metric.QueryDefinition{
+		Name:   q.Name,
+		Query:  query,
+		Labels: labels,
 	}
 }
 
@@ -753,15 +767,10 @@ func (s *MetricService) convertQueryResultToSeries(result *vmclient.QueryResult,
 
 // buildMonitorPromQLQueries 构建监控查询的 PromQL 语句
 func (s *MetricService) buildMonitorPromQLQueries(monitorID string, aggregation string, step time.Duration) []metric.QueryDefinition {
-	var queries = []metric.QueryDefinition{
+	queries := []metric.QueryDefinition{
 		{Name: "response_time", Query: fmt.Sprintf(`pika_monitor_response_time_ms{monitor_id="%s"}`, monitorID)},
 	}
-	if aggregation != "" {
-		for i := range queries {
-			queries[i].Query = wrapAggregationQuery(queries[i].Query, aggregation, step)
-		}
-	}
-	return queries
+	return expandAggregationQueries(queries, aggregation, step)
 }
 
 // GetMonitorHistory 获取监控任务的历史趋势数据

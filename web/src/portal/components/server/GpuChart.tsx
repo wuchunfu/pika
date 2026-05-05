@@ -33,13 +33,11 @@ export const GpuChart = ({agentId, timeRange, start, end}: GpuChartProps) => {
     const chartData = useMemo(() => {
         if (!metricsResponse?.data.series || metricsResponse.data.series?.length === 0) return [];
 
-        // 按时间戳聚合利用率和温度系列
         const timeMap = new Map<number, any>();
 
         const utilizationSeries = metricsResponse.data?.series?.find(s => s.name === 'utilization');
         const temperatureSeries = metricsResponse.data?.series?.find(s => s.name === 'temperature');
 
-        // 添加利用率数据
         utilizationSeries?.data.forEach(point => {
             timeMap.set(point.timestamp, {
                 timestamp: point.timestamp,
@@ -47,7 +45,6 @@ export const GpuChart = ({agentId, timeRange, start, end}: GpuChartProps) => {
             });
         });
 
-        // 添加温度数据
         temperatureSeries?.data.forEach(point => {
             const existing = timeMap.get(point.timestamp);
             if (existing) {
@@ -56,7 +53,7 @@ export const GpuChart = ({agentId, timeRange, start, end}: GpuChartProps) => {
         });
 
         return Array.from(timeMap.values());
-    }, [metricsResponse, timeRange, start, end]);
+    }, [metricsResponse]);
 
     // 渲染
     if (isLoading) {

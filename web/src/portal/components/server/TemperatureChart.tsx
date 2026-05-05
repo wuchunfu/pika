@@ -36,11 +36,10 @@ export const TemperatureChart = ({agentId, timeRange, start, end}: TemperatureCh
     const chartData = useMemo(() => {
         if (!metricsResponse?.data.series || metricsResponse.data.series?.length === 0) return [];
 
-        // 按时间戳聚合所有温度系列
         const timeMap = new Map<number, any>();
 
         metricsResponse.data.series?.forEach(series => {
-            const sensorName = series.name; // 使用系列名称作为传感器标识
+            const sensorName = series.name;
             series.data.forEach(point => {
                 if (!timeMap.has(point.timestamp)) {
                     timeMap.set(point.timestamp, {timestamp: point.timestamp});
@@ -52,7 +51,7 @@ export const TemperatureChart = ({agentId, timeRange, start, end}: TemperatureCh
         });
 
         return Array.from(timeMap.values());
-    }, [metricsResponse, timeRange, start, end]);
+    }, [metricsResponse]);
 
     // 提取所有唯一的温度类型
     const temperatureTypes = useMemo(() => {
@@ -132,7 +131,6 @@ export const TemperatureChart = ({agentId, timeRange, start, end}: TemperatureCh
                     <Legend/>
                     {/* 为选中的温度类型渲染线条 */}
                     {filteredTemperatureTypes.map((type, index) => {
-                        // 使用预定义颜色，如果没有则使用默认颜色
                         const color = TEMPERATURE_COLORS[type] || `hsl(${(index * 60) % 360}, 70%, 50%)`;
                         return (
                             <Line

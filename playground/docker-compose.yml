@@ -1,19 +1,4 @@
 services:
-  postgresql:
-    image: registry.cn-beijing.aliyuncs.com/dushixiang/postgres:16.4
-    environment:
-      POSTGRES_DB: pika
-      POSTGRES_USER: pika
-      POSTGRES_PASSWORD: pika
-    volumes:
-      - ./data/postgresql:/var/lib/postgresql/data
-    ports:
-      - "25432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U pika"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
   victoriametrics:
     image: victoriametrics/victoria-metrics:v1.131.0
     container_name: victoriametrics

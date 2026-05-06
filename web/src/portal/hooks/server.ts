@@ -16,6 +16,8 @@ interface UseMetricsQueryOptions {
     end?: number;
     interfaceName?: string;
     aggregation?: MetricsAggregation;
+    // 自动刷新间隔（毫秒），不传或 0 表示不自动刷新
+    refetchIntervalMs?: number;
 }
 
 /**
@@ -34,16 +36,16 @@ export const useAgentQuery = (agentId?: string) => {
 
 /**
  * 查询 Agent 最新指标
- * 自动每 5 秒刷新一次
  * @param agentId Agent ID
+ * @param intervalMs 自动刷新间隔（毫秒），默认 5000
  * @returns 最新指标查询结果
  */
-export const useLatestMetricsQuery = (agentId?: string) => {
+export const useLatestMetricsQuery = (agentId?: string, intervalMs: number = 5000) => {
     return useQuery({
         queryKey: ['agent', agentId, 'metrics', 'latest'],
         queryFn: () => getAgentLatestMetrics(agentId!),
         enabled: !!agentId,
-        refetchInterval: 5000, // 5秒自动刷新
+        refetchInterval: intervalMs > 0 ? intervalMs : false,
     });
 };
 
@@ -52,7 +54,7 @@ export const useLatestMetricsQuery = (agentId?: string) => {
  * @param options 查询选项
  * @returns 历史指标查询结果
  */
-export const useMetricsQuery = ({agentId, type, range, start, end, interfaceName, aggregation}: UseMetricsQueryOptions) => {
+export const useMetricsQuery = ({agentId, type, range, start, end, interfaceName, aggregation, refetchIntervalMs}: UseMetricsQueryOptions) => {
     return useQuery({
         queryKey: ['agent', agentId, 'metrics', type, range, start, end, interfaceName, aggregation],
         queryFn: () =>
@@ -66,7 +68,7 @@ export const useMetricsQuery = ({agentId, type, range, start, end, interfaceName
                 aggregation,
             }),
         enabled: !!agentId,
-        // refetchInterval: 30000, // 30秒自动刷新
+        refetchInterval: refetchIntervalMs && refetchIntervalMs > 0 ? refetchIntervalMs : false,
     });
 };
 

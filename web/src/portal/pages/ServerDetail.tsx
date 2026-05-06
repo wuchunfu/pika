@@ -19,8 +19,7 @@ import {NetworkChart} from '@portal/components/server/NetworkChart.tsx';
 import {NetworkConnectionChart} from '@portal/components/server/NetworkConnectionChart.tsx';
 import {TemperatureChart} from '@portal/components/server/TemperatureChart.tsx';
 import {useAgentQuery, useLatestMetricsQuery} from '@portal/hooks/server.ts';
-import {SERVER_TIME_RANGE_OPTIONS} from '@portal/constants/time.ts';
-import LittleStatCard from '@portal/components/LittleStatCard.tsx';
+import {LIVE_RANGE, SERVER_TIME_RANGE_OPTIONS} from '@portal/constants/time.ts';
 
 /**
  * 服务器详情页面
@@ -29,19 +28,21 @@ import LittleStatCard from '@portal/components/LittleStatCard.tsx';
 const ServerDetail = () => {
     const {id} = useParams<{ id: string }>();
     const navigate = useNavigate();
-    const [timeRange, setTimeRange] = useState<string>('15m');
+    const [timeRange, setTimeRange] = useState<string>(LIVE_RANGE);
     const [customRange, setCustomRange] = useState<{ start: number; end: number } | null>(null);
 
     const handleCustomRangeApply = (range: { start: number; end: number }) => {
         setCustomRange(range);
     };
 
+    const isLive = timeRange === LIVE_RANGE;
     const customStart = timeRange === 'custom' ? customRange?.start : undefined;
     const customEnd = timeRange === 'custom' ? customRange?.end : undefined;
 
     // 查询基础数据（用于页面头部和系统信息）
+    // 实时模式 1s 拉取最新指标，其余 5s
     const {data: agentResponse, isLoading} = useAgentQuery(id);
-    const {data: latestMetricsResponse} = useLatestMetricsQuery(id);
+    const {data: latestMetricsResponse} = useLatestMetricsQuery(id, isLive ? 1000 : 5000);
 
     const agent = agentResponse?.data;
     const latestMetrics = latestMetricsResponse?.data || null;
@@ -108,32 +109,39 @@ const ServerDetail = () => {
                         <div className="space-y-4 sm:space-y-5 lg:space-y-6">
                             {/* 核心指标：大屏 2 列，小屏 1 列 */}
                             <div className="grid gap-4 sm:gap-5 lg:gap-6 grid-cols-1 md:grid-cols-2">
-                                <CpuChart agentId={id!} timeRange={timeRange} start={customStart} end={customEnd}/>
-                                <MemoryChart agentId={id!} timeRange={timeRange} start={customStart} end={customEnd}/>
+                                <CpuChart agentId={id!} timeRange={timeRange} start={customStart} end={customEnd}
+                                          isLive={isLive} latestMetrics={latestMetrics}/>
+                                <MemoryChart agentId={id!} timeRange={timeRange} start={customStart} end={customEnd}
+                                             isLive={isLive} latestMetrics={latestMetrics}/>
                             </div>
 
                             {/* 网络相关：大屏 2 列，中屏 1 列 */}
                             <div className="grid gap-4 sm:gap-5 lg:gap-6 grid-cols-1 lg:grid-cols-2">
-                                <NetworkChart agentId={id!} timeRange={timeRange} start={customStart} end={customEnd}/>
-                                <DiskIOChart agentId={id!} timeRange={timeRange} start={customStart} end={customEnd}/>
+                                <NetworkChart agentId={id!} timeRange={timeRange} start={customStart} end={customEnd}
+                                              isLive={isLive} latestMetrics={latestMetrics}/>
+                                <DiskIOChart agentId={id!} timeRange={timeRange} start={customStart} end={customEnd}
+                                             isLive={isLive} latestMetrics={latestMetrics}/>
                             </div>
 
                             {/* 进阶指标：单列全宽 */}
                             <div className="grid gap-4 sm:gap-5 lg:gap-6 grid-cols-1">
                                 <NetworkConnectionChart agentId={id!} timeRange={timeRange} start={customStart}
-                                                        end={customEnd}/>
+                                                        end={customEnd} isLive={isLive}
+                                                        latestMetrics={latestMetrics}/>
                             </div>
 
                             {/* 硬件指标：条件渲染，单列全宽 */}
                             <div className="grid gap-4 sm:gap-5 lg:gap-6 grid-cols-1">
-                                <GpuChart agentId={id!} timeRange={timeRange} start={customStart} end={customEnd}/>
+                                <GpuChart agentId={id!} timeRange={timeRange} start={customStart} end={customEnd}
+                                          isLive={isLive}/>
                                 <TemperatureChart agentId={id!} timeRange={timeRange} start={customStart}
-                                                  end={customEnd}/>
+                                                  end={customEnd} isLive={isLive}/>
                             </div>
 
                             {/* 监控指标：单列全宽 */}
                             <div className="grid gap-4 sm:gap-5 lg:gap-6 grid-cols-1">
-                                <MonitorChart agentId={id!} timeRange={timeRange} start={customStart} end={customEnd}/>
+                                <MonitorChart agentId={id!} timeRange={timeRange} start={customStart} end={customEnd}
+                                              isLive={isLive}/>
                             </div>
                         </div>
                     </Card>

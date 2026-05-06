@@ -4,32 +4,46 @@ import {Area, AreaChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XA
 import {ChartPlaceholder} from '@portal/components/ChartPlaceholder';
 import {CustomTooltip} from '@portal/components/CustomTooltip';
 import {useMetricsQuery} from '@portal/hooks/server';
+import {useLiveBuffer} from '@portal/hooks/useLiveBuffer';
+import {LIVE_INITIAL_RANGE, LIVE_WINDOW_MS} from '@portal/constants/time';
 import {ChartContainer} from './ChartContainer';
 import {formatChartTime} from '@/lib/format.ts';
+import type {LatestMetrics} from '@/types';
 
 interface DiskIOChartProps {
     agentId: string;
     timeRange: string;
     start?: number;
     end?: number;
+    isLive?: boolean;
+    latestMetrics?: LatestMetrics | null;
 }
+
+interface DiskIOPoint {
+    timestamp: number;
+    read: number;
+    write: number;
+}
+
+const toMB = (bytes: number) => Number((bytes / 1024 / 1024).toFixed(2));
 
 /**
  * 磁盘 I/O 图表组件
  */
-export const DiskIOChart = ({agentId, timeRange, start, end}: DiskIOChartProps) => {
+export const DiskIOChart = ({agentId, timeRange, start, end, isLive, latestMetrics}: DiskIOChartProps) => {
     const rangeMs = start !== undefined && end !== undefined ? end - start : undefined;
+    const effectiveRange = isLive ? LIVE_INITIAL_RANGE : timeRange;
     // 数据查询
     const {data: metricsResponse, isLoading} = useMetricsQuery({
         agentId,
         type: 'disk_io',
-        range: start !== undefined && end !== undefined ? undefined : timeRange,
+        range: start !== undefined && end !== undefined ? undefined : effectiveRange,
         start,
         end,
     });
 
-    // 数据转换
-    const chartData = useMemo(() => {
+    // 历史数据
+    const initialData = useMemo<DiskIOPoint[]>(() => {
         if (!metricsResponse?.data.series || metricsResponse.data.series?.length === 0) return [];
 
         const readSeries = metricsResponse.data.series?.find(s => s.name === 'read');
@@ -37,24 +51,43 @@ export const DiskIOChart = ({agentId, timeRange, start, end}: DiskIOChartProps) 
 
         if (!readSeries || !writeSeries) return [];
 
-        const timeMap = new Map<number, any>();
+        const timeMap = new Map<number, DiskIOPoint>();
 
         readSeries.data.forEach(point => {
             timeMap.set(point.timestamp, {
                 timestamp: point.timestamp,
-                read: Number((point.value / 1024 / 1024).toFixed(2)),
+                read: toMB(point.value),
+                write: 0,
             });
         });
 
         writeSeries.data.forEach(point => {
             const existing = timeMap.get(point.timestamp);
             if (existing) {
-                existing.write = Number((point.value / 1024 / 1024).toFixed(2));
+                existing.write = toMB(point.value);
+            } else {
+                timeMap.set(point.timestamp, {
+                    timestamp: point.timestamp,
+                    read: 0,
+                    write: toMB(point.value),
+                });
             }
         });
 
-        return Array.from(timeMap.values());
+        return Array.from(timeMap.values()).sort((a, b) => a.timestamp - b.timestamp);
     }, [metricsResponse]);
+
+    // 实时点：用 latestMetrics.timestamp 作为同批次时间锚
+    const livePoint = useMemo<DiskIOPoint | null>(() => {
+        if (!isLive || !latestMetrics?.diskIO || !latestMetrics.timestamp) return null;
+        return {
+            timestamp: latestMetrics.timestamp,
+            read: toMB(latestMetrics.diskIO.totalReadBytesRate),
+            write: toMB(latestMetrics.diskIO.totalWriteBytesRate),
+        };
+    }, [isLive, latestMetrics]);
+
+    const chartData = useLiveBuffer(initialData, !!isLive, livePoint, LIVE_WINDOW_MS, agentId);
 
     // 渲染
     if (isLoading) {
@@ -98,7 +131,7 @@ export const DiskIOChart = ({agentId, timeRange, start, end}: DiskIOChartProps) 
                             className="stroke-gray-400 dark:stroke-cyan-600 text-xs"
                             tickFormatter={(value) => `${value} MB`}
                         />
-                        <Tooltip content={<CustomTooltip unit=" MB"/>}/>
+                        <Tooltip content={<CustomTooltip unit=" MB" timeFormat={isLive ? 'HH:mm:ss' : undefined}/>}/>
                         <Legend/>
                         <Area
                             type="monotone"
@@ -109,6 +142,7 @@ export const DiskIOChart = ({agentId, timeRange, start, end}: DiskIOChartProps) 
                             fill="url(#colorDiskRead)"
                             activeDot={{r: 3}}
                             connectNulls
+                            isAnimationActive={!isLive}
                         />
                         <Area
                             type="monotone"
@@ -119,6 +153,7 @@ export const DiskIOChart = ({agentId, timeRange, start, end}: DiskIOChartProps) 
                             fill="url(#colorDiskWrite)"
                             activeDot={{r: 3}}
                             connectNulls
+                            isAnimationActive={!isLive}
                         />
                     </AreaChart>
                 </ResponsiveContainer>

@@ -17,6 +17,7 @@ var validMetricTypes = map[string]struct{}{
 
 var timeRangeMilliseconds = map[string]int64{
 	"1m":  int64(time.Minute / time.Millisecond),
+	"2m":  int64(2 * time.Minute / time.Millisecond),
 	"5m":  int64(5 * time.Minute / time.Millisecond),
 	"15m": int64(15 * time.Minute / time.Millisecond),
 	"30m": int64(30 * time.Minute / time.Millisecond),
@@ -41,7 +42,7 @@ func parseTimeRange(rangeParam string) (start, end int64, err error) {
 
 	durationMs, ok := timeRangeMilliseconds[rangeParam]
 	if !ok {
-		return 0, 0, fmt.Errorf("无效的时间范围，支持: 1m, 5m, 15m, 30m, 1h, 3h, 6h, 12h, 1d/24h, 3d, 7d, 30d")
+		return 0, 0, fmt.Errorf("无效的时间范围，支持: 1m, 2m, 5m, 15m, 30m, 1h, 3h, 6h, 12h, 1d/24h, 3d, 7d, 30d")
 	}
 	start = end - durationMs
 
@@ -147,12 +148,10 @@ func (h *AgentHandler) GetLatestMetrics(c echo.Context) error {
 	if !ok {
 		return orz.NewError(404, "探针最新指标不存在")
 	}
+	// metrics 已经是独立 snapshot，未登录时直接在副本上抹掉敏感字段即可
 	if !isAuthenticated {
-		sanitized := *metrics
-		sanitized.NetworkInterfaces = nil
-		return orz.Ok(c, &sanitized)
+		metrics.NetworkInterfaces = nil
 	}
-
 	return orz.Ok(c, metrics)
 }
 

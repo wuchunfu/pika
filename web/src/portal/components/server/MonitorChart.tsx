@@ -1,4 +1,4 @@
-import {useEffect, useMemo, useState} from 'react';
+import {memo, useEffect, useMemo, useState} from 'react';
 import {Activity, RotateCcw, ChevronDown, ChevronUp} from 'lucide-react';
 import {Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis} from 'recharts';
 import {ChartPlaceholder} from '@portal/components/ChartPlaceholder';
@@ -13,6 +13,7 @@ interface MonitorChartProps {
     timeRange: string;
     start?: number;
     end?: number;
+    isLive?: boolean;
 }
 
 /**
@@ -154,19 +155,22 @@ const CustomLegend = ({ onClick, selectedMonitors, allMonitorKeys, colors, colla
 /**
  * 监控响应时间图表组件
  */
-export const MonitorChart = ({agentId, timeRange, start, end}: MonitorChartProps) => {
+const MonitorChartImpl = ({agentId, timeRange, start, end, isLive}: MonitorChartProps) => {
     const isMobile = useIsMobile();
     const rangeMs = start !== undefined && end !== undefined ? end - start : undefined;
     const [selectedMonitors, setSelectedMonitors] = useState<Set<string>>(new Set());
     const [legendCollapsed, setLegendCollapsed] = useState(true); // 移动端默认收起
+    // 监控任务由探针自定义周期上报，实时模式下保留 15m 视图，10s 重查
+    const effectiveRange = isLive ? '15m' : timeRange;
 
     // 数据查询
     const {data: metricsResponse, isLoading} = useMetricsQuery({
         agentId,
         type: 'monitor',
-        range: start !== undefined && end !== undefined ? undefined : timeRange,
+        range: start !== undefined && end !== undefined ? undefined : effectiveRange,
         start,
         end,
+        refetchIntervalMs: isLive ? 10000 : undefined,
     });
 
     // 获取所有监控任务的列表（使用名称）
@@ -428,6 +432,7 @@ export const MonitorChart = ({agentId, timeRange, start, end}: MonitorChartProps
                                         connectNulls
                                         onClick={handleAreaClick}
                                         style={{cursor: 'pointer'}}
+                                        isAnimationActive={!isLive}
                                     />
                                 );
                             })}
@@ -470,3 +475,5 @@ export const MonitorChart = ({agentId, timeRange, start, end}: MonitorChartProps
         </ChartContainer>
     );
 };
+
+export const MonitorChart = memo(MonitorChartImpl);

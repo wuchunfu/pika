@@ -82,14 +82,11 @@ func (h *AgentHandler) buildAgentListItem(agent models.Agent, isAuthenticated bo
 	}
 
 	metrics, ok := h.metricService.GetLatestMetrics(agent.ID)
-	if ok {
-		if !isAuthenticated && metrics != nil {
-			sanitized := *metrics
-			sanitized.NetworkInterfaces = nil
-			item["metrics"] = &sanitized
-		} else {
-			item["metrics"] = metrics
+	if ok && metrics != nil {
+		if !isAuthenticated {
+			metrics.NetworkInterfaces = nil
 		}
+		item["metrics"] = metrics
 	}
 
 	return item

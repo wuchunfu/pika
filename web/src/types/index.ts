@@ -205,6 +205,32 @@ export interface NetworkSummary {
     totalInterfaces: number;      // 网卡数量
 }
 
+// 磁盘 I/O 汇总数据
+export interface DiskIOSummary {
+    totalReadBytesRate: number;   // 总读取速率(字节/秒)
+    totalWriteBytesRate: number;  // 总写入速率(字节/秒)
+    totalDevices: number;         // 设备数量
+}
+
+// 监控任务数据（与后端 protocol.MonitorData 对齐）
+export interface MonitorData {
+    agentId: string;
+    agentName: string;
+    monitorId: string;
+    monitorName?: string;
+    type: string;             // http / tcp / ...
+    target?: string;
+    status: string;           // up / down
+    statusCode?: number;
+    responseTime: number;
+    error?: string;
+    checkedAt: number;
+    message?: string;
+    contentMatch?: boolean;
+    certExpiryTime?: number;
+    certDaysLeft?: number;
+}
+
 export interface NetworkInterfaceMetric {
     interface: string;
     macAddress?: string;
@@ -420,15 +446,18 @@ export interface NetworkConnectionMetric {
 }
 
 export interface LatestMetrics {
+    timestamp?: number;       // 该批指标在探针端的采集时间（毫秒），用于实时图表追加
     cpu?: CPUMetric;
     memory?: MemoryMetric;
     disk?: DiskSummary;       // 改为汇总数据
+    diskIO?: DiskIOSummary;   // 磁盘 I/O 汇总（用于实时图表）
     network?: NetworkSummary; // 改为汇总数据
     networkInterfaces?: NetworkInterfaceMetric[];
     networkConnection?: NetworkConnectionMetric; // 网络连接统计
     host?: HostInfo;          // 主机信息
     gpu?: GPUMetric[];        // GPU 列表
     temperature?: TemperatureMetric[];  // 温度传感器列表
+    monitors?: MonitorData[];           // 该探针参与的监控任务最近一次结果
 }
 
 // 通信密钥 / 管理 API Key 相关

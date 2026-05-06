@@ -16,9 +16,10 @@ type CustomTooltipProps = {
     label?: string | number;
     unit?: string;
     className?: string;
+    timeFormat?: string;
 };
 
-export const CustomTooltip = ({active, payload, label, unit = '%', className}: CustomTooltipProps) => {
+export const CustomTooltip = ({active, payload, label, unit = '%', className, timeFormat = 'MM-DD HH:mm'}: CustomTooltipProps) => {
     if (!active || !payload || payload.length === 0) {
         return null;
     }
@@ -26,7 +27,7 @@ export const CustomTooltip = ({active, payload, label, unit = '%', className}: C
     // 从 payload 中获取完整的时间戳信息（如果有的话）
     const fullTimestamp = payload[0]?.payload?.timestamp;
     const displayLabel = fullTimestamp
-        ? dayjs(fullTimestamp).format('MM-DD HH:mm')
+        ? dayjs(fullTimestamp).format(timeFormat)
         : label;
 
     return (

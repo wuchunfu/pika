@@ -4,35 +4,49 @@ import {CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XA
 import {ChartPlaceholder} from '@portal/components/ChartPlaceholder';
 import {CustomTooltip} from '@portal/components/CustomTooltip';
 import {useMetricsQuery} from '@portal/hooks/server';
+import {useLiveBuffer} from '@portal/hooks/useLiveBuffer';
+import {LIVE_INITIAL_RANGE, LIVE_WINDOW_MS} from '@portal/constants/time';
 import {ChartContainer} from './ChartContainer';
 import {formatChartTime} from '@/lib/format.ts';
+import type {LatestMetrics} from '@/types';
 
 interface NetworkConnectionChartProps {
     agentId: string;
     timeRange: string;
     start?: number;
     end?: number;
+    isLive?: boolean;
+    latestMetrics?: LatestMetrics | null;
+}
+
+interface ConnPoint {
+    timestamp: number;
+    established: number;
+    time_wait: number;
+    close_wait: number;
+    listen: number;
 }
 
 /**
  * 网络连接统计图表组件
+ * 实时模式下与 CPU/内存等快指标一样按 1s 节奏 append，便于压测观察
  */
-export const NetworkConnectionChart = ({agentId, timeRange, start, end}: NetworkConnectionChartProps) => {
+export const NetworkConnectionChart = ({agentId, timeRange, start, end, isLive, latestMetrics}: NetworkConnectionChartProps) => {
     const rangeMs = start !== undefined && end !== undefined ? end - start : undefined;
-    // 数据查询
+    const effectiveRange = isLive ? LIVE_INITIAL_RANGE : timeRange;
     const {data: metricsResponse, isLoading} = useMetricsQuery({
         agentId,
         type: 'network_connection',
-        range: start !== undefined && end !== undefined ? undefined : timeRange,
+        range: start !== undefined && end !== undefined ? undefined : effectiveRange,
         start,
         end,
     });
 
-    // 数据转换
-    const chartData = useMemo(() => {
+    // 历史数据
+    const initialData = useMemo<ConnPoint[]>(() => {
         if (!metricsResponse?.data.series || metricsResponse.data.series?.length === 0) return [];
 
-        const timeMap = new Map<number, any>();
+        const timeMap = new Map<number, ConnPoint>();
 
         metricsResponse.data.series?.forEach(series => {
             const stateName = series.name;
@@ -43,17 +57,31 @@ export const NetworkConnectionChart = ({agentId, timeRange, start, end}: Network
                         established: 0,
                         time_wait: 0,
                         close_wait: 0,
-                        listen: 0
+                        listen: 0,
                     });
                 }
-
                 const existing = timeMap.get(point.timestamp)!;
-                existing[stateName] = Number(point.value.toFixed(0));
+                (existing as Record<string, number>)[stateName] = Number(point.value.toFixed(0));
             });
         });
 
         return Array.from(timeMap.values()).sort((a, b) => a.timestamp - b.timestamp);
     }, [metricsResponse]);
+
+    // 实时点
+    const livePoint = useMemo<ConnPoint | null>(() => {
+        if (!isLive || !latestMetrics?.networkConnection || !latestMetrics.timestamp) return null;
+        const c = latestMetrics.networkConnection;
+        return {
+            timestamp: latestMetrics.timestamp,
+            established: c.established ?? 0,
+            time_wait: c.timeWait ?? 0,
+            close_wait: c.closeWait ?? 0,
+            listen: c.listen ?? 0,
+        };
+    }, [isLive, latestMetrics]);
+
+    const chartData = useLiveBuffer(initialData, !!isLive, livePoint, LIVE_WINDOW_MS, agentId);
 
     // 渲染
     if (isLoading) {
@@ -86,7 +114,7 @@ export const NetworkConnectionChart = ({agentId, timeRange, start, end}: Network
                             stroke="currentColor"
                             className="stroke-gray-400 dark:stroke-cyan-600 text-xs"
                         />
-                        <Tooltip content={<CustomTooltip unit=""/>}/>
+                        <Tooltip content={<CustomTooltip unit="" timeFormat={isLive ? 'HH:mm:ss' : undefined}/>}/>
                         <Legend/>
                         <Line
                             type="monotone"
@@ -97,6 +125,7 @@ export const NetworkConnectionChart = ({agentId, timeRange, start, end}: Network
                             dot={false}
                             activeDot={{r: 3}}
                             connectNulls
+                            isAnimationActive={!isLive}
                         />
                         <Line
                             type="monotone"
@@ -107,6 +136,7 @@ export const NetworkConnectionChart = ({agentId, timeRange, start, end}: Network
                             dot={false}
                             activeDot={{r: 3}}
                             connectNulls
+                            isAnimationActive={!isLive}
                         />
                         <Line
                             type="monotone"
@@ -117,6 +147,7 @@ export const NetworkConnectionChart = ({agentId, timeRange, start, end}: Network
                             dot={false}
                             activeDot={{r: 3}}
                             connectNulls
+                            isAnimationActive={!isLive}
                         />
                         <Line
                             type="monotone"
@@ -127,6 +158,7 @@ export const NetworkConnectionChart = ({agentId, timeRange, start, end}: Network
                             dot={false}
                             activeDot={{r: 3}}
                             connectNulls
+                            isAnimationActive={!isLive}
                         />
                     </LineChart>
                 </ResponsiveContainer>

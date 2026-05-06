@@ -1,9 +1,10 @@
-import {useEffect, useMemo, useState} from 'react';
+import {memo, useEffect, useMemo, useState} from 'react';
 import {Thermometer} from 'lucide-react';
 import {CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis} from 'recharts';
 import {ChartPlaceholder} from '@portal/components/ChartPlaceholder';
 import {CustomTooltip} from '@portal/components/CustomTooltip';
 import {useMetricsQuery} from '@portal/hooks/server';
+import {LIVE_INITIAL_RANGE} from '@portal/constants/time';
 import {TEMPERATURE_COLORS} from '@portal/constants/server';
 import {ChartContainer} from './ChartContainer';
 import {formatChartTime} from '@/lib/format.ts';
@@ -13,23 +14,26 @@ interface TemperatureChartProps {
     timeRange: string;
     start?: number;
     end?: number;
+    isLive?: boolean;
 }
 
 /**
  * 系统温度图表组件
- * 支持温度类型切换
+ * 支持温度类型切换；实时模式下 5s refetch + React.memo 避免随 ServerDetail 1s 重渲染
  */
-export const TemperatureChart = ({agentId, timeRange, start, end}: TemperatureChartProps) => {
+const TemperatureChartImpl = ({agentId, timeRange, start, end, isLive}: TemperatureChartProps) => {
     const [selectedTempType, setSelectedTempType] = useState<string>('all');
     const rangeMs = start !== undefined && end !== undefined ? end - start : undefined;
+    const effectiveRange = isLive ? LIVE_INITIAL_RANGE : timeRange;
 
-    // 数据查询
+    // 数据查询：温度采集 5s 一次，实时模式 5s 重查
     const {data: metricsResponse, isLoading} = useMetricsQuery({
         agentId,
         type: 'temperature',
-        range: start !== undefined && end !== undefined ? undefined : timeRange,
+        range: start !== undefined && end !== undefined ? undefined : effectiveRange,
         start,
         end,
+        refetchIntervalMs: isLive ? 5000 : undefined,
     });
 
     // 数据转换
@@ -143,6 +147,7 @@ export const TemperatureChart = ({agentId, timeRange, start, end}: TemperatureCh
                                 dot={false}
                                 activeDot={{r: 3}}
                                 connectNulls
+                                isAnimationActive={!isLive}
                             />
                         );
                     })}
@@ -151,3 +156,5 @@ export const TemperatureChart = ({agentId, timeRange, start, end}: TemperatureCh
         </ChartContainer>
     );
 };
+
+export const TemperatureChart = memo(TemperatureChartImpl);

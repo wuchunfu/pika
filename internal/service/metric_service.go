@@ -148,17 +148,31 @@ func (s *MetricService) CleanOrphanedAgentMetrics(ctx context.Context) error {
 }
 
 // HandleMetricData 处理指标数据
+//
+// 并发：每次调用都会刷新 latestCache 的 TTL（defer Set），且对 latestMetrics 字段的写入
+// 走 Update 在写锁内 commit；读者侧 GetLatestMetrics 通过 Snapshot 取读锁拷贝，避免与
+// json.Marshal 之间的 data race。
+//
+// 时间戳：sample.Timestamp（agent 端 wall clock）只用于写入 VictoriaMetrics 的样本时间，
+// LatestMetrics.Timestamp 改用服务端 time.Now()（单调推进），避免 agent NTP 倒拨导致
+// 前端 useLiveBuffer 的去重逻辑永久冻结。
 func (s *MetricService) HandleMetricData(ctx context.Context, agentID string, metricType string, data json.RawMessage, timestamp int64) error {
 	if timestamp == 0 {
 		timestamp = time.Now().UnixMilli()
 	}
+	serverNow := time.Now().UnixMilli()
 
-	// 更新内存缓存
+	// 取/建缓存项；defer 里再 Set 一次以刷新 TTL（即便本次没有任何字段变化也能延期）
 	latestMetrics, ok := s.latestCache.Get(agentID)
 	if !ok {
 		latestMetrics = &metric.LatestMetrics{}
-		s.latestCache.Set(agentID, latestMetrics, time.Hour)
 	}
+	defer s.latestCache.Set(agentID, latestMetrics, time.Hour)
+
+	// 推进缓存时间戳：服务端 wall clock，永远向前
+	latestMetrics.Update(func(lm *metric.LatestMetrics) {
+		lm.Timestamp = serverNow
+	})
 
 	// 解析数据并写入 VictoriaMetrics
 	switch protocol.MetricType(metricType) {
@@ -167,7 +181,9 @@ func (s *MetricService) HandleMetricData(ctx context.Context, agentID string, me
 		if err := json.Unmarshal(data, &cpuData); err != nil {
 			return err
 		}
-		latestMetrics.CPU = &cpuData
+		latestMetrics.Update(func(lm *metric.LatestMetrics) {
+			lm.CPU = &cpuData
+		})
 		metrics := s.convertToMetrics(agentID, metricType, &cpuData, timestamp)
 		return s.vmClient.Write(ctx, metrics)
 
@@ -176,7 +192,9 @@ func (s *MetricService) HandleMetricData(ctx context.Context, agentID string, me
 		if err := json.Unmarshal(data, &memData); err != nil {
 			return err
 		}
-		latestMetrics.Memory = &memData
+		latestMetrics.Update(func(lm *metric.LatestMetrics) {
+			lm.Memory = &memData
+		})
 		metrics := s.convertToMetrics(agentID, metricType, &memData, timestamp)
 		return s.vmClient.Write(ctx, metrics)
 
@@ -186,24 +204,24 @@ func (s *MetricService) HandleMetricData(ctx context.Context, agentID string, me
 			return err
 		}
 		// 无有效磁盘数据时，不更新缓存（保留上一次有效值）
-		if len(diskDataList) == 0 {
-			metrics := s.convertToMetrics(agentID, metricType, diskDataList, timestamp)
-			return s.vmClient.Write(ctx, metrics)
-		}
-		// 计算汇总数据用于缓存
-		var totalTotal, totalUsed, totalFree uint64
-		for _, diskData := range diskDataList {
-			totalTotal += diskData.Total
-			totalUsed += diskData.Used
-			totalFree += diskData.Free
-		}
-		usagePercent := float64(totalUsed) / float64(totalTotal) * 100
-		latestMetrics.Disk = &metric.DiskSummary{
-			UsagePercent: usagePercent,
-			TotalDisks:   len(diskDataList),
-			Total:        totalTotal,
-			Used:         totalUsed,
-			Free:         totalFree,
+		if len(diskDataList) > 0 {
+			var totalTotal, totalUsed, totalFree uint64
+			for _, diskData := range diskDataList {
+				totalTotal += diskData.Total
+				totalUsed += diskData.Used
+				totalFree += diskData.Free
+			}
+			usagePercent := float64(totalUsed) / float64(totalTotal) * 100
+			summary := &metric.DiskSummary{
+				UsagePercent: usagePercent,
+				TotalDisks:   len(diskDataList),
+				Total:        totalTotal,
+				Used:         totalUsed,
+				Free:         totalFree,
+			}
+			latestMetrics.Update(func(lm *metric.LatestMetrics) {
+				lm.Disk = summary
+			})
 		}
 		metrics := s.convertToMetrics(agentID, metricType, diskDataList, timestamp)
 		return s.vmClient.Write(ctx, metrics)
@@ -214,32 +232,32 @@ func (s *MetricService) HandleMetricData(ctx context.Context, agentID string, me
 			return err
 		}
 		// 无有效网络数据时，不更新缓存（保留上一次有效值）
-		if len(networkDataList) == 0 {
-			metrics := s.convertToMetrics(agentID, metricType, networkDataList, timestamp)
-			return s.vmClient.Write(ctx, metrics)
-		}
-		// 计算汇总数据用于缓存
-		var totalSentRate, totalRecvRate uint64
-		var totalSentTotal, totalRecvTotal uint64
-		for _, netData := range networkDataList {
-			totalSentRate += netData.BytesSentRate
-			totalRecvRate += netData.BytesRecvRate
-			totalSentTotal += netData.BytesSentTotal
-			totalRecvTotal += netData.BytesRecvTotal
-		}
-		latestMetrics.Network = &metric.NetworkSummary{
-			TotalBytesSentRate:  totalSentRate,
-			TotalBytesRecvRate:  totalRecvRate,
-			TotalBytesSentTotal: totalSentTotal,
-			TotalBytesRecvTotal: totalRecvTotal,
-			TotalInterfaces:     len(networkDataList),
-		}
-		latestMetrics.NetworkInterfaces = networkDataList
-		// 更新流量统计
-		if err := s.trafficService.UpdateAgentTraffic(ctx, agentID, totalRecvTotal, totalSentTotal); err != nil {
-			s.logger.Error("更新探针流量统计失败",
-				zap.String("agentId", agentID),
-				zap.Error(err))
+		if len(networkDataList) > 0 {
+			var totalSentRate, totalRecvRate uint64
+			var totalSentTotal, totalRecvTotal uint64
+			for _, netData := range networkDataList {
+				totalSentRate += netData.BytesSentRate
+				totalRecvRate += netData.BytesRecvRate
+				totalSentTotal += netData.BytesSentTotal
+				totalRecvTotal += netData.BytesRecvTotal
+			}
+			summary := &metric.NetworkSummary{
+				TotalBytesSentRate:  totalSentRate,
+				TotalBytesRecvRate:  totalRecvRate,
+				TotalBytesSentTotal: totalSentTotal,
+				TotalBytesRecvTotal: totalRecvTotal,
+				TotalInterfaces:     len(networkDataList),
+			}
+			latestMetrics.Update(func(lm *metric.LatestMetrics) {
+				lm.Network = summary
+				lm.NetworkInterfaces = networkDataList
+			})
+			// 更新流量统计（此处涉及外部 service，不持锁调用）
+			if err := s.trafficService.UpdateAgentTraffic(ctx, agentID, totalRecvTotal, totalSentTotal); err != nil {
+				s.logger.Error("更新探针流量统计失败",
+					zap.String("agentId", agentID),
+					zap.Error(err))
+			}
 		}
 		metrics := s.convertToMetrics(agentID, metricType, networkDataList, timestamp)
 		return s.vmClient.Write(ctx, metrics)
@@ -249,7 +267,9 @@ func (s *MetricService) HandleMetricData(ctx context.Context, agentID string, me
 		if err := json.Unmarshal(data, &connData); err != nil {
 			return err
 		}
-		latestMetrics.NetworkConnection = &connData
+		latestMetrics.Update(func(lm *metric.LatestMetrics) {
+			lm.NetworkConnection = &connData
+		})
 		metrics := s.convertToMetrics(agentID, metricType, &connData, timestamp)
 		return s.vmClient.Write(ctx, metrics)
 
@@ -257,6 +277,25 @@ func (s *MetricService) HandleMetricData(ctx context.Context, agentID string, me
 		var diskIODataList []*protocol.DiskIOData
 		if err := json.Unmarshal(data, &diskIODataList); err != nil {
 			return err
+		}
+		// 无有效数据时不更新缓存（保留上一次有效值）
+		if len(diskIODataList) > 0 {
+			var totalRead, totalWrite uint64
+			for _, ioData := range diskIODataList {
+				if ioData == nil {
+					continue
+				}
+				totalRead += ioData.ReadBytesRate
+				totalWrite += ioData.WriteBytesRate
+			}
+			summary := &metric.DiskIOSummary{
+				TotalReadBytesRate:  totalRead,
+				TotalWriteBytesRate: totalWrite,
+				TotalDevices:        len(diskIODataList),
+			}
+			latestMetrics.Update(func(lm *metric.LatestMetrics) {
+				lm.DiskIO = summary
+			})
 		}
 		metrics := s.convertToMetrics(agentID, metricType, diskIODataList, timestamp)
 		return s.vmClient.Write(ctx, metrics)
@@ -266,7 +305,9 @@ func (s *MetricService) HandleMetricData(ctx context.Context, agentID string, me
 		if err := json.Unmarshal(data, &hostData); err != nil {
 			return err
 		}
-		latestMetrics.Host = &hostData
+		latestMetrics.Update(func(lm *metric.LatestMetrics) {
+			lm.Host = &hostData
+		})
 		return nil
 
 	case protocol.MetricTypeGPU:
@@ -275,12 +316,11 @@ func (s *MetricService) HandleMetricData(ctx context.Context, agentID string, me
 			return err
 		}
 		// 无 GPU 数据时，不更新缓存
-		if len(gpuDataList) == 0 {
-			metrics := s.convertToMetrics(agentID, metricType, gpuDataList, timestamp)
-			return s.vmClient.Write(ctx, metrics)
+		if len(gpuDataList) > 0 {
+			latestMetrics.Update(func(lm *metric.LatestMetrics) {
+				lm.GPU = gpuDataList
+			})
 		}
-		// 更新缓存
-		latestMetrics.GPU = gpuDataList
 		metrics := s.convertToMetrics(agentID, metricType, gpuDataList, timestamp)
 		return s.vmClient.Write(ctx, metrics)
 
@@ -290,12 +330,11 @@ func (s *MetricService) HandleMetricData(ctx context.Context, agentID string, me
 			return err
 		}
 		// 无温度数据时，不更新缓存
-		if len(tempDataList) == 0 {
-			metrics := s.convertToMetrics(agentID, metricType, tempDataList, timestamp)
-			return s.vmClient.Write(ctx, metrics)
+		if len(tempDataList) > 0 {
+			latestMetrics.Update(func(lm *metric.LatestMetrics) {
+				lm.Temp = tempDataList
+			})
 		}
-		// 更新缓存
-		latestMetrics.Temp = tempDataList
 		metrics := s.convertToMetrics(agentID, metricType, tempDataList, timestamp)
 		return s.vmClient.Write(ctx, metrics)
 
@@ -307,8 +346,9 @@ func (s *MetricService) HandleMetricData(ctx context.Context, agentID string, me
 		for i := range monitorDataList {
 			monitorDataList[i].AgentId = agentID // 关联探针ID
 		}
-		// 更新缓存
-		latestMetrics.Monitors = monitorDataList
+		latestMetrics.Update(func(lm *metric.LatestMetrics) {
+			lm.Monitors = monitorDataList
+		})
 		for _, monitorData := range monitorDataList {
 			s.updateMonitorCache(agentID, &monitorData, timestamp)
 		}
@@ -482,10 +522,15 @@ func (s *MetricService) updateMonitorCache(agentID string, monitorData *protocol
 	s.monitorLatestCache.Set(monitorID, latestMetrics, 5*time.Minute)
 }
 
-// GetLatestMetrics 获取最新指标
+// GetLatestMetrics 获取最新指标的快照
+// 返回值是缓存项的浅拷贝（无互斥量），调用方可以安全 marshal 或在副本上 sanitize 字段，
+// 不会与上报路径产生 data race。
 func (s *MetricService) GetLatestMetrics(agentID string) (*metric.LatestMetrics, bool) {
 	metrics, ok := s.latestCache.Get(agentID)
-	return metrics, ok
+	if !ok {
+		return nil, false
+	}
+	return metrics.Snapshot(), true
 }
 
 // DeleteAgentMetrics 删除探针在 VictoriaMetrics 中的历史指标

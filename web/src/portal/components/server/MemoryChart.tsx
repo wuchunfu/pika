@@ -4,40 +4,60 @@ import {Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAx
 import {ChartPlaceholder} from '@portal/components/ChartPlaceholder';
 import {CustomTooltip} from '@portal/components/CustomTooltip';
 import {useMetricsQuery} from '@portal/hooks/server';
+import {useLiveBuffer} from '@portal/hooks/useLiveBuffer';
+import {LIVE_INITIAL_RANGE, LIVE_WINDOW_MS} from '@portal/constants/time';
 import {ChartContainer} from './ChartContainer';
 import {formatChartTime} from '@/lib/format.ts';
+import type {LatestMetrics} from '@/types';
 
 interface MemoryChartProps {
     agentId: string;
     timeRange: string;
     start?: number;
     end?: number;
+    isLive?: boolean;
+    latestMetrics?: LatestMetrics | null;
+}
+
+interface MemoryPoint {
+    timestamp: number;
+    usage: number;
 }
 
 /**
  * 内存使用率图表组件
  */
-export const MemoryChart = ({agentId, timeRange, start, end}: MemoryChartProps) => {
+export const MemoryChart = ({agentId, timeRange, start, end, isLive, latestMetrics}: MemoryChartProps) => {
     const rangeMs = start !== undefined && end !== undefined ? end - start : undefined;
+    const effectiveRange = isLive ? LIVE_INITIAL_RANGE : timeRange;
     // 数据查询
     const {data: metricsResponse, isLoading} = useMetricsQuery({
         agentId,
         type: 'memory',
-        range: start !== undefined && end !== undefined ? undefined : timeRange,
+        range: start !== undefined && end !== undefined ? undefined : effectiveRange,
         start,
         end,
     });
 
-    // 数据转换
-    const chartData = useMemo(() => {
+    // 历史数据
+    const initialData = useMemo<MemoryPoint[]>(() => {
         const memorySeries = metricsResponse?.data.series?.find(s => s.name === 'usage');
         if (!memorySeries) return [];
-
         return memorySeries.data.map((point) => ({
             usage: Number(point.value.toFixed(2)),
             timestamp: point.timestamp,
         }));
     }, [metricsResponse]);
+
+    // 实时点
+    const livePoint = useMemo<MemoryPoint | null>(() => {
+        if (!isLive || !latestMetrics?.memory || !latestMetrics.timestamp) return null;
+        const usage = latestMetrics.memory.usagePercent;
+        if (typeof usage !== 'number' || !Number.isFinite(usage)) return null;
+        return {timestamp: latestMetrics.timestamp, usage: Number(usage.toFixed(2))};
+    }, [isLive, latestMetrics]);
+
+    const chartData = useLiveBuffer(initialData, !!isLive, livePoint, LIVE_WINDOW_MS, agentId);
 
     // 渲染
     if (isLoading) {
@@ -77,7 +97,7 @@ export const MemoryChart = ({agentId, timeRange, start, end}: MemoryChartProps) 
                             className="stroke-gray-400 dark:stroke-cyan-600 text-xs"
                             tickFormatter={(value) => `${value}%`}
                         />
-                        <Tooltip content={<CustomTooltip unit="%"/>}/>
+                        <Tooltip content={<CustomTooltip unit="%" timeFormat={isLive ? 'HH:mm:ss' : undefined}/>}/>
                         <Area
                             type="monotone"
                             dataKey="usage"
@@ -87,6 +107,7 @@ export const MemoryChart = ({agentId, timeRange, start, end}: MemoryChartProps) 
                             fill="url(#memoryAreaGradient)"
                             activeDot={{r: 3}}
                             connectNulls
+                            isAnimationActive={!isLive}
                         />
                     </AreaChart>
                 </ResponsiveContainer>

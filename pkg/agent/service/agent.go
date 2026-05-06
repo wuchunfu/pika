@@ -486,6 +486,9 @@ func (a *Agent) getCollectorManager() *collector.Manager {
 	return a.collectorManager
 }
 
+// collectorBaseInterval 采集循环的基础节奏，所有采集器的采集间隔必须是它的整数倍
+const collectorBaseInterval = 1 * time.Second
+
 // metricsLoop 指标采集循环
 func (a *Agent) metricsLoop(ctx context.Context) {
 	manager := a.getCollectorManager()
@@ -494,20 +497,20 @@ func (a *Agent) metricsLoop(ctx context.Context) {
 		a.setCollectorManager(manager)
 	}
 
-	// 立即采集一次动态数据
-	if err := a.collectAndSendAllMetrics(manager); err != nil {
+	// 立即采集一次（tick=0 时所有采集器都到期，等于全量采集）
+	var tickCount uint64
+	if err := a.collectAndSendAllMetrics(manager, tickCount); err != nil {
 		slog.Warn("初始数据采集失败", "error", err)
 	}
 
-	// 定时采集动态指标
-	ticker := time.NewTicker(a.cfg.GetCollectorInterval())
+	ticker := time.NewTicker(collectorBaseInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
-			// 采集并发送各种动态指标
-			if err := a.collectAndSendAllMetrics(manager); err != nil {
+			tickCount++
+			if err := a.collectAndSendAllMetrics(manager, tickCount); err != nil {
 				slog.Warn("数据采集失败", "error", err)
 			}
 		case <-ctx.Done():
@@ -517,7 +520,7 @@ func (a *Agent) metricsLoop(ctx context.Context) {
 }
 
 // collectAndSendAllMetrics 采集并发送所有动态指标
-func (a *Agent) collectAndSendAllMetrics(manager *collector.Manager) error {
+func (a *Agent) collectAndSendAllMetrics(manager *collector.Manager, tickCount uint64) error {
 	if manager == nil {
 		return fmt.Errorf("采集器未初始化")
 	}
@@ -528,7 +531,7 @@ func (a *Agent) collectAndSendAllMetrics(manager *collector.Manager) error {
 	done := make(chan result, 1)
 
 	go func() {
-		done <- result{err: a.doCollectAndSend(manager)}
+		done <- result{err: a.doCollectAndSend(manager, tickCount)}
 	}()
 
 	select {
@@ -560,7 +563,8 @@ func (t *collectTimer) done() {
 type collectFn func() (protocol.MetricSample, error)
 
 // doCollectAndSend 采集所有动态指标，打包成一个 batch 上报
-func (a *Agent) doCollectAndSend(manager *collector.Manager) error {
+// 各采集器按自身 interval 节流；本 tick 到期的采集器并行执行，避免串行累计耗时压垮 1s 节奏
+func (a *Agent) doCollectAndSend(manager *collector.Manager, tickCount uint64) error {
 	conn := a.getActiveConn()
 	if conn != nil {
 		if sent, err := a.outboundBuffer.Flush(conn); err != nil {
@@ -571,44 +575,79 @@ func (a *Agent) doCollectAndSend(manager *collector.Manager) error {
 	}
 
 	// required=true 时采集失败计入错误；required=false 适用于 GPU/温度等可选项
+	// interval 必须为 collectorBaseInterval 的整数倍
 	collectors := []struct {
 		name     string
 		required bool
+		interval time.Duration
 		fn       collectFn
 	}{
-		{"cpu", true, manager.CollectCPU},
-		{"memory", true, manager.CollectMemory},
-		{"disk", true, manager.CollectDisk},
-		{"disk_io", true, manager.CollectDiskIO},
-		{"network", true, manager.CollectNetwork},
-		{"network_connection", true, manager.CollectNetworkConnection},
-		{"host", true, manager.CollectHost},
-		{"gpu", false, manager.CollectGPU},
-		{"temperature", false, manager.CollectTemperature},
+		{"cpu", true, 1 * time.Second, manager.CollectCPU},
+		{"memory", true, 1 * time.Second, manager.CollectMemory},
+		{"disk_io", true, 1 * time.Second, manager.CollectDiskIO},
+		{"network", true, 1 * time.Second, manager.CollectNetwork},
+		{"gpu", false, 1 * time.Second, manager.CollectGPU},
+		{"network_connection", true, 1 * time.Second, manager.CollectNetworkConnection},
+		{"temperature", false, 5 * time.Second, manager.CollectTemperature},
+		{"disk", true, 30 * time.Second, manager.CollectDisk},
+		{"host", true, 60 * time.Second, manager.CollectHost},
 	}
 
-	samples := make([]protocol.MetricSample, 0, len(collectors))
-	var hasError bool
+	type collectResult struct {
+		name     string
+		required bool
+		sample   protocol.MetricSample
+		err      error
+	}
 
-	for _, c := range collectors {
-		func() {
+	// 收集本 tick 到期的采集器
+	due := make([]int, 0, len(collectors))
+	for i, c := range collectors {
+		every := uint64(c.interval / collectorBaseInterval)
+		if every == 0 || tickCount%every != 0 {
+			continue
+		}
+		due = append(due, i)
+	}
+
+	results := make(chan collectResult, len(due))
+	var wg sync.WaitGroup
+	for _, idx := range due {
+		c := collectors[idx]
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					slog.Error("采集器 panic", "collector", c.name, "panic", r)
+					results <- collectResult{name: c.name, required: c.required, err: fmt.Errorf("panic: %v", r)}
+				}
+			}()
 			t := newCollectTimer(c.name)
-			defer t.done()
 			sample, err := c.fn()
-			if err != nil {
-				if errors.Is(err, collector.ErrNoData) {
-					return
-				}
-				if c.required {
-					slog.Warn("采集指标失败", "collector", c.name, "error", err)
-					hasError = true
-				} else {
-					slog.Info("采集可选指标失败", "collector", c.name, "error", err)
-				}
-				return
-			}
-			samples = append(samples, sample)
+			t.done()
+			results <- collectResult{name: c.name, required: c.required, sample: sample, err: err}
 		}()
+	}
+	wg.Wait()
+	close(results)
+
+	samples := make([]protocol.MetricSample, 0, len(due))
+	var hasError bool
+	for r := range results {
+		if r.err != nil {
+			if errors.Is(r.err, collector.ErrNoData) {
+				continue
+			}
+			if r.required {
+				slog.Warn("采集指标失败", "collector", r.name, "error", r.err)
+				hasError = true
+			} else {
+				slog.Info("采集可选指标失败", "collector", r.name, "error", r.err)
+			}
+			continue
+		}
+		samples = append(samples, r.sample)
 	}
 
 	writer := newOutboundWriter(conn, a.outboundBuffer)

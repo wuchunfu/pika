@@ -114,6 +114,9 @@ func AutoStep(start, end time.Time) time.Duration {
 	r := end.Sub(start)
 
 	switch {
+	case r <= 5*time.Minute:
+		// 实时/极短窗口：与探针 1s 采集对齐，避免聚合丢点
+		return 1 * time.Second
 	case r <= time.Hour:
 		return 10 * time.Second
 	case r <= 3*time.Hour:

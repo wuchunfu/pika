@@ -68,12 +68,23 @@ export const formatUptime = (seconds: number | undefined | null): string => {
  */
 export const formatChartTime = (timestamp: number, timeRange: string, rangeMs?: number): string => {
     const date = new Date(timestamp);
-    
-    // 解析时间范围，判断是否超过1天
+
+    // 实时模式：精确到秒
+    if (timeRange === 'live') {
+        return date.toLocaleTimeString('zh-CN', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false,
+        });
+    }
+
+    // 跨夜的窗口需要带日期，否则 "10:30" 在前一天和今天的图上是同一个标签
+    // 1d / 24h 严格意义上等于一天，但实际跨夜，归到 long range
     const isLongRange = rangeMs !== undefined
-        ? rangeMs > 24 * 60 * 60 * 1000
-        : timeRange.endsWith('d') && parseInt(timeRange) > 1;
-    
+        ? rangeMs >= 24 * 60 * 60 * 1000
+        : timeRange === '1d' || timeRange === '24h' || (timeRange.endsWith('d') && parseInt(timeRange) > 1);
+
     if (isLongRange) {
         // 超过1天：显示 "月/日 时:分"
         const month = String(date.getMonth() + 1).padStart(2, '0');

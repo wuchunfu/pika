@@ -61,7 +61,9 @@ export const NetworkConnectionChart = ({agentId, timeRange, start, end, isLive, 
                     });
                 }
                 const existing = timeMap.get(point.timestamp)!;
-                (existing as Record<string, number>)[stateName] = Number(point.value.toFixed(0));
+                if (stateName === 'established' || stateName === 'time_wait' || stateName === 'close_wait' || stateName === 'listen') {
+                    existing[stateName] = Number(point.value.toFixed(0));
+                }
             });
         });
 

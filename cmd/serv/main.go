@@ -14,6 +14,8 @@ import (
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
+
+	_ "github.com/go-orz/orz/drivers/sqlite"
 )
 
 var (

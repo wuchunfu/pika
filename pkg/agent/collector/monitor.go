@@ -10,8 +10,6 @@ import (
 	"strings"
 	"time"
 
-	probing "github.com/prometheus-community/pro-bing"
-
 	"github.com/dushixiang/pika/internal/protocol"
 )
 
@@ -245,10 +243,9 @@ func (c *MonitorCollector) checkICMP(item protocol.MonitorItem) protocol.Monitor
 		CheckedAt: time.Now().UnixMilli(),
 	}
 
-	// 获取配置，使用默认值
 	icmpCfg := item.ICMPConfig
-	timeout := 5 // 默认 5 秒
-	count := 4   // 默认 Ping 4 次
+	timeout := 5
+	count := 4
 	if icmpCfg != nil {
 		if icmpCfg.Timeout > 0 {
 			timeout = icmpCfg.Timeout
@@ -258,45 +255,25 @@ func (c *MonitorCollector) checkICMP(item protocol.MonitorItem) protocol.Monitor
 		}
 	}
 
-	// 创建 Pinger
-	pinger, err := probing.NewPinger(item.Target)
-	if err != nil {
+	if !isValidPingTarget(item.Target) {
 		result.Status = "down"
-		result.Error = fmt.Sprintf("create pinger failed: %v", err)
+		result.Error = fmt.Sprintf("invalid ping target: %s", item.Target)
 		return result
 	}
 
-	// 配置 Pinger
-	pinger.Count = count
-	pinger.Timeout = time.Duration(timeout) * time.Second
-	pinger.Interval = 100 * time.Millisecond
-
-	// 尝试以非特权模式运行（使用 UDP）
-	pinger.SetPrivileged(false)
-
-	// 执行 Ping
-	err = pinger.Run()
+	stats, err := pingHost(item.Target, count, timeout)
 	if err != nil {
-		// 如果非特权模式失败，尝试特权模式（需要 root 权限或 CAP_NET_RAW）
-		pinger.SetPrivileged(true)
-		err = pinger.Run()
-		if err != nil {
-			result.Status = "down"
-			result.Error = fmt.Sprintf("ping failed: %v", err)
-			return result
-		}
+		result.Status = "down"
+		result.Error = fmt.Sprintf("ping failed: %v", err)
+		return result
 	}
 
-	// 获取统计信息
-	stats := pinger.Statistics()
-
-	// 检查是否有成功的包
 	if stats.PacketsRecv > 0 {
 		result.Status = "up"
-		result.ResponseTime = stats.AvgRtt.Milliseconds()
-		packetLoss := int(stats.PacketLoss)
+		result.ResponseTime = stats.AvgRttMs
+		loss := int(stats.PacketLoss)
 		result.Message = fmt.Sprintf("ICMP Echo Reply - %d/%d packets, %dms avg, %d%% loss",
-			stats.PacketsRecv, stats.PacketsSent, stats.AvgRtt.Milliseconds(), packetLoss)
+			stats.PacketsRecv, stats.PacketsSent, stats.AvgRttMs, loss)
 	} else {
 		result.Status = "down"
 		result.Error = fmt.Sprintf("all %d ping attempts failed (timeout: %ds)", count, timeout)
@@ -304,4 +281,30 @@ func (c *MonitorCollector) checkICMP(item protocol.MonitorItem) protocol.Monitor
 	}
 
 	return result
+}
+
+// pingStats 跨平台 ping 统计结果
+type pingStats struct {
+	PacketsSent int
+	PacketsRecv int
+	AvgRttMs    int64
+	PacketLoss  float64
+}
+
+// isValidPingTarget 校验 ping 目标，避免在 Windows 下被 ping.exe 解析为 flag 或注入额外参数
+func isValidPingTarget(target string) bool {
+	if target == "" || strings.HasPrefix(target, "-") {
+		return false
+	}
+	for _, r := range target {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		case r == '.', r == ':', r == '-', r == '_':
+		default:
+			return false
+		}
+	}
+	return true
 }

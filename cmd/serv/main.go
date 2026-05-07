@@ -15,6 +15,7 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
+	_ "github.com/go-orz/orz/drivers/postgres"
 	_ "github.com/go-orz/orz/drivers/sqlite"
 )
 

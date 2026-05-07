@@ -92,7 +92,7 @@ const ServerList = () => {
             const response = await listAgents();
             return (response.data || []) as AgentWithMetrics[];
         },
-        refetchInterval: 5000,
+        refetchInterval: 3000,
     });
 
     // 获取标签列表

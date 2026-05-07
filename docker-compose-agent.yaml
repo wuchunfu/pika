@@ -1,8 +1,0 @@
-services:
-  pika-agent:
-    image: dushixiang/pika-agent:latest
-    container_name: pika-agent
-    restart: unless-stopped
-    network_mode: host
-    volumes:
-      - ./pika:/root/.pika/

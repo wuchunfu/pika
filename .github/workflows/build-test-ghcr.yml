@@ -51,11 +51,12 @@ jobs:
       # 验证 index.html 模板代码
       - name: 验证 index.html 模板代码
         run: |
-          if grep -q "{{.CustomJS}}" web/dist/index.html && grep -q "{{.CustomCSS}}" web/dist/index.html; then
-            echo "✓ 自定义模板代码已成功添加到 index.html"
+          if grep -Fq "__PIKA_CUSTOM_JS__" web/dist/index.html && grep -Fq "__PIKA_CUSTOM_CSS__" web/dist/index.html && grep -Fq "[[.SystemNameZh]]" web/dist/index.html; then
+            cp web/dist/index.html web/dist/index.html.tmpl
+            echo "✓ index.html 模板已准备完成"
           else
-            echo "✗ 自定义模板代码未找到，重新执行 patch-html"
-            go run cmd/patch-html/main.go
+            echo "✗ index.html 模板代码未找到"
+            exit 1
           fi
 
       # 列出编译产物

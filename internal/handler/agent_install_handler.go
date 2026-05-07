@@ -3,9 +3,10 @@ package handler
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 
-	"github.com/dushixiang/pika"
+	"github.com/dushixiang/pika/internal/assets"
 	"github.com/dushixiang/pika/pkg/version"
 	"github.com/go-orz/orz"
 	"github.com/labstack/echo/v4"
@@ -22,6 +23,9 @@ func (h *AgentHandler) GetAgentVersion(c echo.Context) error {
 // DownloadAgent 下载 Agent 二进制文件
 func (h *AgentHandler) DownloadAgent(c echo.Context) error {
 	filename := c.Param("filename")
+	if filename == "" || strings.ContainsAny(filename, `/\`) {
+		return orz.NewError(400, "无效的 Agent 文件名")
+	}
 
 	// 校验 API Key
 	apiKey := c.QueryParam("key")
@@ -43,12 +47,13 @@ func (h *AgentHandler) DownloadAgent(c echo.Context) error {
 		h.logger.Info("download agent allowed by ip whitelist", zap.String("ip", clientIP), zap.String("filename", filename))
 	}
 
-	// 从嵌入的文件系统读取
-	agentFile, err := pika.AgentFS().Open(fmt.Sprintf("pika-%s", filename))
+	agentFilename := fmt.Sprintf("pika-%s", filename)
+	agentFile, err := os.Open(assets.AgentPath(agentFilename))
 	if err != nil {
 		h.logger.Error("agent binary not found", zap.String("filename", filename), zap.Error(err))
 		return orz.NewError(404, "未找到对应平台的 Agent 二进制文件")
 	}
+	defer agentFile.Close()
 
 	// 设置响应头
 	c.Response().Header().Set("Content-Type", "application/octet-stream")

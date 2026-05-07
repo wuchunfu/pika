@@ -14,8 +14,7 @@
 *~
 
 # 构建产物
-# bin/agents/ 不能忽略，Agent Docker 镜像构建需要使用
-web/dist/
+# bin/agents/ 和 web/dist/ 不能忽略，运行时从本地文件加载
 web/node_modules/
 
 # 数据目录

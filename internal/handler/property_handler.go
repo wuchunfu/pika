@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/dushixiang/pika/internal/assets"
 	"github.com/dushixiang/pika/internal/models"
 	"github.com/dushixiang/pika/internal/service"
 	"github.com/go-orz/orz"
@@ -87,6 +88,12 @@ func (h *PropertyHandler) SetProperty(c echo.Context) error {
 	if err := h.service.Set(c.Request().Context(), id, req.Name, req.Value); err != nil {
 		h.logger.Error("设置属性失败", zap.String("id", id), zap.Error(err))
 		return orz.NewError(500, "设置属性失败")
+	}
+	if id == service.PropertyIDSystemConfig {
+		if err := assets.RenderUIFiles(h.service); err != nil {
+			h.logger.Error("渲染前端模板失败", zap.String("id", id), zap.Error(err))
+			return orz.NewError(500, "渲染前端模板失败")
+		}
 	}
 
 	return orz.Ok(c, orz.Map{})

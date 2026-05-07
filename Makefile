@@ -9,9 +9,8 @@ GIT_REVISION=$(shell git rev-parse HEAD)
 GO_VERSION=$(shell go version)
 BUILD_TIME=$(shell date +%Y-%m-%d_%H:%M:%S)
 
-# 是否使用最佳压缩（release 时设置为 true）
-RELEASE ?= false
-UPX_FLAGS=$(if $(filter true,$(RELEASE)),--best,)
+# UPX 默认使用快速压缩。可通过 make UPX_FLAGS=... 覆盖。
+UPX_FLAGS ?=
 
 # Go 构建参数
 LDFLAGS=-s -w -X 'github.com/dushixiang/pika/pkg/version.Version=$(VERSION)' -X 'github.com/dushixiang/pika/pkg/version.AgentVersion=$(AGENT_VERSION)'
@@ -21,7 +20,6 @@ GOFLAGS=CGO_ENABLED=0
 # 构建前端
 build-web:
 	cd web && yarn && yarn build
-	@go run cmd/patch-html/main.go
 
 # 构建服务端（开发）
 build-server:
@@ -64,11 +62,11 @@ build-agents:
 	@echo "All agents compressed successfully!"
 	@ls -lh bin/agents/
 
-# 构建所有（release版本，使用最佳压缩）
+# 构建所有（release版本）
 build-release:
 	make build-web
-	make build-agents RELEASE=true
-	make build-servers RELEASE=true
+	make build-agents
+	make build-servers
 
 # 清理编译产物
 clean:

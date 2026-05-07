@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/dushixiang/pika/internal/assets"
 	"github.com/dushixiang/pika/internal/models"
 	"github.com/dushixiang/pika/internal/repo"
 	"github.com/dushixiang/pika/pkg/version"
-	"github.com/dushixiang/pika/web"
 	"github.com/go-orz/cache"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -347,7 +347,7 @@ func (s *PropertyService) InitializeDefaultConfigs(ctx context.Context) error {
 			Value: models.SystemConfig{
 				SystemNameZh: "皮卡监控",
 				SystemNameEn: "Pika Monitor",
-				LogoBase64:   web.DefaultLogoBase64(),
+				LogoBase64:   assets.DefaultLogoBase64(),
 				ICPCode:      "",
 				DefaultView:  "grid",
 			},

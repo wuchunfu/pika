@@ -1,26 +1,22 @@
 package internal
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"log"
 	"net/http"
 	"strings"
-	"text/template"
 	"time"
 
+	"github.com/dushixiang/pika/internal/assets"
 	"github.com/dushixiang/pika/internal/config"
 	"github.com/dushixiang/pika/internal/handler"
 	"github.com/dushixiang/pika/internal/migrate"
 	"github.com/dushixiang/pika/internal/models"
 	"github.com/dushixiang/pika/internal/scheduler"
 	"github.com/dushixiang/pika/internal/service"
-	"github.com/dushixiang/pika/pkg/replace"
 	"github.com/dushixiang/pika/pkg/version"
-	"github.com/dushixiang/pika/web"
 	"github.com/google/uuid"
-	"github.com/spf13/afero/mem"
 
 	"github.com/go-errors/errors"
 	"github.com/go-orz/orz"
@@ -111,12 +107,14 @@ func setup(app *orz.App) error {
 	go components.PublicIPService.Run(ctx)
 
 	// 设置API
-	setupApi(app, components)
+	if err := setupApi(app, components); err != nil {
+		return err
+	}
 
 	return nil
 }
 
-func setupApi(app *orz.App, components *AppComponents) {
+func setupApi(app *orz.App, components *AppComponents) error {
 	logger := app.Logger()
 	e := app.GetEcho()
 
@@ -130,10 +128,11 @@ func setupApi(app *orz.App, components *AppComponents) {
 		},
 	}))
 
-	indexTemplate, err := template.New("index").Parse(web.IndexHtml())
-	if err != nil {
-		logger.Fatal("failed to parse index.html", zap.Error(err))
+	webDir := assets.WebDir()
+	if err := assets.RenderUIFilesInDir(webDir, components.PropertyService); err != nil {
+		return fmt.Errorf("render ui files: %w", err)
 	}
+
 	// 静态文件服务
 	e.Use(middleware.StaticWithConfig(middleware.StaticConfig{
 		Skipper: func(c echo.Context) bool {
@@ -145,34 +144,17 @@ func setupApi(app *orz.App, components *AppComponents) {
 			if strings.HasPrefix(c.Request().RequestURI, "/ws") {
 				return true
 			}
+			// 不暴露模板文件
+			if strings.HasSuffix(c.Request().RequestURI, ".tmpl") {
+				return true
+			}
 			return false
 		},
 		Index:      "index.html",
 		HTML5:      true,
 		Browse:     false,
 		IgnoreBase: false,
-		Filesystem: replace.FS(http.FS(web.Assets()), func(name string, file http.File) (http.File, error) {
-			if name == "index.html" {
-				fileData := mem.CreateFile(name)
-				fileHandle := mem.NewFileHandle(fileData)
-
-				systemConfig, err := components.PropertyService.GetSystemConfig(context.Background())
-				if err != nil {
-					return file, nil
-				}
-
-				var buf bytes.Buffer
-				err = indexTemplate.Execute(&buf, systemConfig)
-				if err != nil {
-					return file, err
-				}
-				if _, err := fileHandle.Write(buf.Bytes()); err != nil {
-					return nil, err
-				}
-				return fileHandle, nil
-			}
-			return file, nil
-		}),
+		Filesystem: http.Dir(webDir),
 	}))
 
 	customValidator := CustomValidator{Validator: validator.New()}
@@ -321,6 +303,8 @@ func setupApi(app *orz.App, components *AppComponents) {
 
 	// GitHub 认证路由（如果启用）
 	publicApi.POST("/auth/github/callback", components.AccountHandler.GitHubLogin)
+
+	return nil
 }
 
 func autoMigrate(database *gorm.DB) error {

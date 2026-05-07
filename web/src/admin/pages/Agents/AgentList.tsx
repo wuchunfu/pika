@@ -272,6 +272,10 @@ const AgentList = () => {
             title: '版本',
             dataIndex: 'version',
             key: 'version',
+            width: 120,
+            render: (value) => (
+                <span className="font-mono text-xs whitespace-nowrap">{value || '-'}</span>
+            ),
         },
         {
             title: '到期时间',
@@ -560,7 +564,7 @@ const AgentList = () => {
                     dataSource={filteredAgents}
                     loading={isLoading || isFetching}
                     rowKey="id"
-                    scroll={{x: 1600}}
+                    scroll={{x: 2600}}
                     tableLayout="fixed"
                     rowSelection={{
                         selectedRowKeys,
